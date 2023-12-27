@@ -8,7 +8,7 @@
 import "dart:developer" as developer;
 
 // Self-made packages
-import 'package:flutter_application_1/elementnodearxmlprocessor.dart';
+import 'package:ARXMLExplorer/elementnodearxmlprocessor.dart';
 
 import "elementnode.dart";
 
@@ -75,11 +75,11 @@ class ElementNodeController {
   void onSelected(int id, bool newIsSelected) {
     // #10 - Unselect the previous node
     if (_idLastSelectedNode > 0) {
-      _nodeCache[_idLastSelectedNode]!.isSelected = false;
+      _flatMap[_idLastSelectedNode]!.isSelected = false;
     }
 
     // #20 - Select the new mode
-    _nodeCache[id]!.isSelected = newIsSelected;
+    _flatMap[id]!.isSelected = newIsSelected;
 
     // #30 - Cache the id of the new selected node
     _idLastSelectedNode = id;
@@ -97,8 +97,6 @@ class ElementNodeController {
   /// NOTE: This method does to trigger a widget tree rebuild
   ///
   void collapseNode(int id) {
-    developer.log("Collapse Node hit for id $id");
-
     rebuildNodeCacheAfterNodeCollapseChange(id);
 
     // Invert the isCollapsed state

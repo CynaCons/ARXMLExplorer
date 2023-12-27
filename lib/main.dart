@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/elementnodearxmlprocessor.dart';
+import 'package:ARXMLExplorer/elementnodearxmlprocessor.dart';
 import 'dart:developer' as developer;
-import 'package:flutter_application_1/elementnodecontroller.dart';
+import 'package:ARXMLExplorer/elementnodecontroller.dart';
+import 'package:flutter/services.dart';
 
 // Self-made packages
 import 'elementnode.dart';
 import 'elementnodewidget.dart';
 import 'arxmlloader.dart';
+import 'elementnodesearchdelegate.dart';
 
 /// TASKLIST
 ///
@@ -79,7 +81,7 @@ class XmlExplorerApp extends StatelessWidget {
       title: 'ARXML Explorer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.amber,
+        primarySwatch: Colors.blue,
       ),
       home: const MyHomePage(title: 'ARXML Explorer'),
     );
@@ -102,6 +104,9 @@ class _MyHomePageState extends State<MyHomePage> {
   final ARXMLFileLoader _arxmlLoader = const ARXMLFileLoader();
   final ElementNodeARXMLProcessor _elementNodeArxmlProcessor =
       const ElementNodeARXMLProcessor();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final CustomSearchDelegate _searchDelegate = CustomSearchDelegate();
+  final FocusNode _focusNode = FocusNode();
 
   /// Callback function called from the ElementNodeController to trigger a rebuild
   void requestRebuildCallback() {
@@ -132,14 +137,31 @@ class _MyHomePageState extends State<MyHomePage> {
           IconButton(
             icon: const Icon(Icons.save),
             onPressed: _saveFile,
-          )
+          ),
+          IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: () {
+                showSearch(context: context, delegate: _searchDelegate);
+              })
         ]),
-        body: ListView.builder(
-            // ignore: unnecessary_null_in_if_null_operators
-            physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: _nodeController.itemCount,
-            itemBuilder: (context, index) {
-              return ElementNodeWidget(_nodeController.getNode(index));
-            }));
+        body: KeyboardListener(
+            autofocus: true,
+            focusNode: _focusNode,
+            onKeyEvent: (KeyEvent event) {
+              if (HardwareKeyboard.instance.isControlPressed == true &&
+                  HardwareKeyboard.instance
+                      .isLogicalKeyPressed(LogicalKeyboardKey.keyF)) {
+                showSearch(context: context, delegate: _searchDelegate);
+              }
+            },
+            child: ListView.builder(
+              // ignore: unnecessary_null_in_if_null_operators
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: _nodeController.itemCount,
+              itemBuilder: (context, index) {
+                return ElementNodeWidget(_nodeController.getNode(index));
+              },
+            )),
+        key: _scaffoldKey);
   }
 }

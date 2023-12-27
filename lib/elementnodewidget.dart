@@ -26,7 +26,7 @@ class _ElementNodeWidgetState extends State<ElementNodeWidget> {
         "(NodeId=${widget.node!.id} IsCollapsed=${widget.node!.isCollapsed} IsVisible=${widget.node!.isVisible} UncollapseLength=${widget.node!.uncollapsedLength}) VisibleLength=${widget.node!.visibleLength}";
 
     String widgetText =
-        "${widget.node!.elementText} ${widget.node!.shortname} ${widget.node!.definitionRef} $debugText";
+        "${widget.node!.elementText} ${widget.node!.shortname} ${widget.node!.definitionRef}";
 
     // Add the SizedBox
     // If there is a node
