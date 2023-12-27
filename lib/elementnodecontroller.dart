@@ -17,6 +17,7 @@ const gNewImplementation = true;
 class ElementNodeController {
   late List<ElementNode> rootNodesList;
   Map<int, ElementNode> _nodeCache = <int, ElementNode>{};
+  Map<int, ElementNode> _flatMap = <int, ElementNode>{};
   final ElementNodeARXMLProcessor _arxmlProcessor =
       const ElementNodeARXMLProcessor();
   int _idLastSelectedNode = -1;
@@ -46,6 +47,9 @@ class ElementNodeController {
       }
     }
 
+    // Store the original nodes in the FlatMap
+    _flatMap = Map.from(_nodeCache);
+
     // Set the RequestRebuildCallback coming from the Nodes
     requestRebuildCallback = rebuildCallback;
   }
@@ -63,7 +67,7 @@ class ElementNodeController {
   }
 
   void onCollapseStateChanged(int id, bool newState) {
-    rebuildNodeCacheAfterNodeCollapseChange(id, newState);
+    collapseNode(id);
 
     return;
   }
@@ -95,44 +99,75 @@ class ElementNodeController {
   void collapseNode(int id) {
     developer.log("Collapse Node hit for id $id");
 
-    rebuildNodeCacheAfterNodeCollapseChange(id, _nodeCache[id]!.isCollapsed);
+    rebuildNodeCacheAfterNodeCollapseChange(id);
 
     // Invert the isCollapsed state
-    _nodeCache[id]!.isCollapsed = !_nodeCache[id]!.isCollapsed;
+    _flatMap[id]!.isCollapsed = !_flatMap[id]!.isCollapsed;
   }
 
-  ///
-  /// TODO This function could be embedded inside the collapseNode function
-  void rebuildNodeCacheAfterNodeCollapseChange(int id, bool newState) {
+  void rebuildNodeCacheAfterNodeCollapseChange(int id) {
+    Map<int, ElementNode> lNodeCache = <int, ElementNode>{};
+    int lIdxCollapsedNode = 0;
+    bool currentState = _flatMap[id]!.isCollapsed;
+
+    // ------------------- Rebuild the NodeCache
+    // First, takeover the nodes which are before the collapsed node
+    var lIdx = 0; // Index for the next free slot in the new lNodeCache
+    for (var node in _nodeCache.values) {
+      lNodeCache[lIdx] = node;
+      if (node.id == id) {
+        // Exit condition when the node is found
+        lIdxCollapsedNode = lIdx;
+        // Takeover the node being collapsed
+        break;
+      }
+      lIdx++;
+    }
+    var lVisibleLength = _nodeCache[lIdxCollapsedNode]!.visibleLength;
+    var totalLength = _nodeCache.values.length;
+    var lUncollapsedLength = _nodeCache[lIdxCollapsedNode]!.uncollapsedLength;
+    // The visibleLength includes the length of the element itself
+    var lVisibleCollapsingLength = lVisibleLength - 1;
+
+    // Increment to have the lIdx pointing to the next free slot (next slot after the collapsed node)
+    lIdx++;
+
     // Then, starting from index apply the displacement based on child size
-    if (newState == false) {
-      // If collapsing, change the isVisible attribute for all childs
-      recurseToChangeVisiblity(_nodeCache[id]!, false, true);
+    if (currentState == false) {
+      // If collapsing
+      for (var i = lIdx; i < (totalLength - lVisibleCollapsingLength); i++) {
+        if (i + (lVisibleCollapsingLength) <= totalLength) {
+          lNodeCache[i] = _nodeCache[i + lVisibleCollapsingLength]!;
+          // lNodeCache[i]!.id = i;
+        }
+      }
     } else {
       // If uncollapsing
-      recurseToChangeVisiblity(_nodeCache[id]!, true, true);
-    }
+      // Reload the childs of the collapsed node
+      var lNodeUncollapsed = _nodeCache[lIdxCollapsedNode]!;
+      int lFlatMapNextNodeIdx = lNodeUncollapsed.id + 1;
+      for (var i = 0; i < lUncollapsedLength - 1; i++, lIdx++) {
+        var lNodeActive = _flatMap[lFlatMapNextNodeIdx]!;
 
-    requestRebuildCallback();
-  }
+        lNodeCache[lIdx] = _flatMap[lFlatMapNextNodeIdx]!;
+        // lNodeCache[lIdx]!.id = lIdx;
+        if (lNodeActive.isCollapsed == false) {
+          lFlatMapNextNodeIdx += 1;
+        } else {
+          lFlatMapNextNodeIdx += lNodeActive.uncollapsedLength;
+        }
+      }
 
-  ///
-  /// Function to recursively change the visiblity of a node and its children
-  ///
-  void recurseToChangeVisiblity(
-      ElementNode node, bool newIsVisible, bool isFirst) {
-    if (isFirst == false) {
-      node.isVisible = newIsVisible;
-    } else {
-      isFirst = false;
-    }
-
-    if (node.children.isEmpty == true) {
-      return;
-    } else {
-      for (var child in node.children) {
-        recurseToChangeVisiblity(child, newIsVisible, isFirst);
+      for (var i = lIdxCollapsedNode + lVisibleLength;
+          i < totalLength;
+          i++, lIdx++) {
+        lNodeCache[lIdx] = _nodeCache[i]!;
+        // lNodeCache[lIdx]!.id = lIdx;
       }
     }
+
+    _nodeCache = Map.from(lNodeCache);
+
+    requestRebuildCallback();
   }
 }

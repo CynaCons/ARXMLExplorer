@@ -139,15 +139,7 @@ class _MyHomePageState extends State<MyHomePage> {
             physics: const AlwaysScrollableScrollPhysics(),
             itemCount: _nodeController.itemCount,
             itemBuilder: (context, index) {
-              ElementNode? node;
-
-              node = _nodeController.getNode(index);
-
-              if (node!.isVisible == true) {
-                return ElementNodeWidget(_nodeController.getNode(index));
-              } else {
-                return Container();
-              }
+              return ElementNodeWidget(_nodeController.getNode(index));
             }));
   }
 }

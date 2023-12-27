@@ -23,7 +23,10 @@ class _ElementNodeWidgetState extends State<ElementNodeWidget> {
 
     // Build the (optional) debug text
     String debugText =
-        "(NodeId=${widget.node!.id} IsCollapsed=${widget.node!.isCollapsed} IsVisible=${widget.node!.isVisible})";
+        "(NodeId=${widget.node!.id} IsCollapsed=${widget.node!.isCollapsed} IsVisible=${widget.node!.isVisible} UncollapseLength=${widget.node!.uncollapsedLength}) VisibleLength=${widget.node!.visibleLength}";
+
+    String widgetText =
+        "${widget.node!.elementText} ${widget.node!.shortname} ${widget.node!.definitionRef} $debugText";
 
     // Add the SizedBox
     // If there is a node
@@ -58,15 +61,13 @@ class _ElementNodeWidgetState extends State<ElementNodeWidget> {
                         widget.node!.id, widget.node!.isCollapsed);
 
                     // Then update the state
-                    widget.node!.isCollapsed = !widget.node!.isCollapsed;
+                    // widget.node!.isCollapsed = !widget.node!.isCollapsed;
                   }),
                 })));
 
-        text = Text(
-            "${widget.node!.elementText} ${widget.node!.shortname} ${widget.node!.definitionRef}");
+        text = Text(widgetText);
       } else {
-        text = Text(
-            "${widget.node!.elementText} ${widget.node!.shortname} ${widget.node!.definitionRef}");
+        text = Text(widgetText);
       }
     } else {
       text = const Text("Unexpected Widget built. Index out of range");
