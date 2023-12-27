@@ -3,6 +3,7 @@ import 'package:ARXMLExplorer/elementnodearxmlprocessor.dart';
 import 'dart:developer' as developer;
 import 'package:ARXMLExplorer/elementnodecontroller.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 // Self-made packages
 import 'elementnode.dart';
@@ -83,15 +84,16 @@ class XmlExplorerApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(title: 'ARXML Explorer'),
+      home: MyHomePage(title: 'ARXML Explorer'),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
   final String title;
+  final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
-  const MyHomePage({super.key, required this.title});
+  MyHomePage({super.key, required this.title});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -102,16 +104,20 @@ class _MyHomePageState extends State<MyHomePage> {
   List<ElementNode> _rootNodesList = [];
   final ElementNodeController _nodeController = ElementNodeController();
   final ARXMLFileLoader _arxmlLoader = const ARXMLFileLoader();
-  final ElementNodeARXMLProcessor _elementNodeArxmlProcessor =
-      const ElementNodeARXMLProcessor();
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  final CustomSearchDelegate _searchDelegate = CustomSearchDelegate();
+  final ElementNodeARXMLProcessor _elementNodeArxmlProcessor = const ElementNodeARXMLProcessor();
   final FocusNode _focusNode = FocusNode();
+
+  late CustomSearchDelegate _searchDelegate;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchDelegate = CustomSearchDelegate(widget.scaffoldKey);
+  }
 
   /// Callback function called from the ElementNodeController to trigger a rebuild
   void requestRebuildCallback() {
     setState(() {});
-    // _arxmlLoader.rebuild();
   }
 
   void _openFile() async {
@@ -132,36 +138,35 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(title: const Text("ARXML Explorer"), actions: [
-          IconButton(icon: const Icon(Icons.file_open), onPressed: _openFile),
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: _saveFile,
-          ),
-          IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: () {
-                showSearch(context: context, delegate: _searchDelegate);
-              })
-        ]),
-        body: KeyboardListener(
-            autofocus: true,
-            focusNode: _focusNode,
-            onKeyEvent: (KeyEvent event) {
-              if (HardwareKeyboard.instance.isControlPressed == true &&
-                  HardwareKeyboard.instance
-                      .isLogicalKeyPressed(LogicalKeyboardKey.keyF)) {
-                showSearch(context: context, delegate: _searchDelegate);
-              }
+      appBar: AppBar(title: const Text("ARXML Explorer"), actions: [
+        IconButton(icon: const Icon(Icons.file_open), onPressed: _openFile),
+        IconButton(
+          icon: const Icon(Icons.save),
+          onPressed: _saveFile,
+        ),
+        IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              showSearch(context: context, delegate: _searchDelegate);
+            })
+      ]),
+      body: KeyboardListener(
+          autofocus: true,
+          focusNode: _focusNode,
+          onKeyEvent: (KeyEvent event) {
+            if (HardwareKeyboard.instance.isControlPressed == true && HardwareKeyboard.instance.isLogicalKeyPressed(LogicalKeyboardKey.keyF)) {
+              showSearch(context: context, delegate: _searchDelegate);
+            }
+          },
+          child: ListView.builder(
+            // ignore: unnecessary_null_in_if_null_operators
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: _nodeController.itemCount,
+            itemBuilder: (context, index) {
+              return ElementNodeWidget(_nodeController.getNode(index));
             },
-            child: ListView.builder(
-              // ignore: unnecessary_null_in_if_null_operators
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: _nodeController.itemCount,
-              itemBuilder: (context, index) {
-                return ElementNodeWidget(_nodeController.getNode(index));
-              },
-            )),
-        key: _scaffoldKey);
+          )),
+      key: widget.scaffoldKey,
+    );
   }
 }
