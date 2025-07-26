@@ -104,15 +104,17 @@ class _MyHomePageState extends State<MyHomePage> {
   List<ElementNode> _rootNodesList = [];
   final ElementNodeController _nodeController = ElementNodeController();
   final ARXMLFileLoader _arxmlLoader = const ARXMLFileLoader();
-  final ElementNodeARXMLProcessor _elementNodeArxmlProcessor = const ElementNodeARXMLProcessor();
+  final ElementNodeARXMLProcessor _elementNodeArxmlProcessor =
+      const ElementNodeARXMLProcessor();
   final FocusNode _focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
 
   late CustomSearchDelegate _searchDelegate;
 
   @override
   void initState() {
     super.initState();
-    _searchDelegate = CustomSearchDelegate(widget.scaffoldKey);
+    _searchDelegate = CustomSearchDelegate(widget.scaffoldKey, _nodeController);
   }
 
   /// Callback function called from the ElementNodeController to trigger a rebuild
@@ -125,7 +127,7 @@ class _MyHomePageState extends State<MyHomePage> {
     requestRebuildCallback();
     setState(() {
       _rootNodesList = lList;
-      _nodeController.init(_rootNodesList, requestRebuildCallback);
+      _nodeController.init(_rootNodesList, requestRebuildCallback, _scrollController);
     });
     _elementNodeArxmlProcessor.processNodes(_nodeController);
     setState(() {});
@@ -153,12 +155,9 @@ class _MyHomePageState extends State<MyHomePage> {
       body: KeyboardListener(
           autofocus: true,
           focusNode: _focusNode,
-          onKeyEvent: (KeyEvent event) {
-            if (HardwareKeyboard.instance.isControlPressed == true && HardwareKeyboard.instance.isLogicalKeyPressed(LogicalKeyboardKey.keyF)) {
-              showSearch(context: context, delegate: _searchDelegate);
-            }
-          },
+          
           child: ListView.builder(
+            controller: _scrollController,
             // ignore: unnecessary_null_in_if_null_operators
             physics: const AlwaysScrollableScrollPhysics(),
             itemCount: _nodeController.itemCount,

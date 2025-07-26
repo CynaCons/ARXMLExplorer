@@ -6,6 +6,7 @@
 ///
 
 import "dart:developer" as developer;
+import 'package:flutter/material.dart';
 
 // Self-made packages
 import 'package:ARXMLExplorer/elementnodearxmlprocessor.dart';
@@ -18,15 +19,18 @@ class ElementNodeController {
   late List<ElementNode> rootNodesList;
   Map<int, ElementNode> _nodeCache = <int, ElementNode>{};
   Map<int, ElementNode> _flatMap = <int, ElementNode>{};
+
+  Iterable<ElementNode> get flatMapValues => _flatMap.values;
   final ElementNodeARXMLProcessor _arxmlProcessor =
       const ElementNodeARXMLProcessor();
   int _idLastSelectedNode = -1;
 
   late void Function() requestRebuildCallback;
+  late ScrollController _scrollController;
 
   ElementNodeController();
 
-  void init(List<ElementNode> rootNodesList, void Function() rebuildCallback) {
+  void init(List<ElementNode> rootNodesList, void Function() rebuildCallback, ScrollController scrollController) {
     int index = 0;
 
     // Reset the _nodeCahe map
@@ -52,6 +56,16 @@ class ElementNodeController {
 
     // Set the RequestRebuildCallback coming from the Nodes
     requestRebuildCallback = rebuildCallback;
+    _scrollController = scrollController;
+  }
+
+  void scrollToNode(int id) {
+    _scrollController.animateTo(
+      id * 50.0, // Assuming each node has a height of 50.0, adjust as needed
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+    onSelected(id, true);
   }
 
   int get itemCount {
