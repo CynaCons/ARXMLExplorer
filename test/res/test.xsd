@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="AUTOSAR">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="AR-PACKAGES">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="AR-PACKAGE">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="SHORT-NAME" type="xs:string"/>
+                    <xs:element name="ELEMENTS">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="ECUC-MODULE-CONFIGURATION-VALUES">
+                            <xs:complexType>
+                              <xs:sequence>
+                                <xs:element name="SHORT-NAME" type="xs:string"/>
+                                <xs:element name="CONTAINERS">
+                                  <xs:complexType>
+                                    <xs:sequence>
+                                      <xs:element name="ECUC-CONTAINER-VALUE" maxOccurs="unbounded">
+                                        <xs:complexType>
+                                          <xs:sequence>
+                                            <xs:element name="SHORT-NAME" type="xs:string"/>
+                                            <xs:element name="DEFINITION-REF" type="xs:string"/>
+                                            <xs:element name="PARAMETER-VALUES">
+                                              <xs:complexType>
+                                                <xs:sequence>
+                                                  <xs:element name="ECUC-NUMERICAL-PARAM-VALUE">
+                                                    <xs:complexType>
+                                                      <xs:sequence>
+                                                        <xs:element name="SHORT-NAME" type="xs:string"/>
+                                                        <xs:element name="VALUE" type="xs:integer"/>
+                                                      </xs:sequence>
+                                                    </xs:complexType>
+                                                  </xs:element>
+                                                </xs:sequence>
+                                              </xs:complexType>
+                                            </xs:element>
+                                          </xs:sequence>
+                                        </xs:complexType>
+                                      </xs:element>
+                                    </xs:sequence>
+                                  </xs:complexType>
+                                </xs:element>
+                              </xs:sequence>
+                            </xs:complexType>
+                          </xs:element>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

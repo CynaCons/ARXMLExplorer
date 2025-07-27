@@ -6,10 +6,10 @@
 ///
 
 import "dart:developer" as developer;
-import 'package:flutter/material.dart';
+
 
 // Self-made packages
-import 'package:ARXMLExplorer/elementnodearxmlprocessor.dart';
+
 
 import "elementnode.dart";
 
@@ -17,55 +17,49 @@ const gNewImplementation = true;
 
 class ElementNodeController {
   late List<ElementNode> rootNodesList;
-  Map<int, ElementNode> _nodeCache = <int, ElementNode>{};
-  Map<int, ElementNode> _flatMap = <int, ElementNode>{};
+  final Map<int, ElementNode> _nodeCache = <int, ElementNode>{};
+  final Map<int, ElementNode> _flatMap = <int, ElementNode>{};
 
   Iterable<ElementNode> get flatMapValues => _flatMap.values;
-  final ElementNodeARXMLProcessor _arxmlProcessor =
-      const ElementNodeARXMLProcessor();
+  
   int _idLastSelectedNode = -1;
 
   late void Function() requestRebuildCallback;
-  late ScrollController _scrollController;
+  late Future<void> Function(int id) onScrollToNode;
 
   ElementNodeController();
 
-  void init(List<ElementNode> rootNodesList, void Function() rebuildCallback, ScrollController scrollController) {
-    int index = 0;
+  void init(List<ElementNode> rootNodesList, void Function() rebuildCallback, Future<void> Function(int id) scrollCallback) {
+    this.rootNodesList = rootNodesList;
+    _nodeCache.clear();
+    _flatMap.clear(); // Clear flatMap as well
+    int globalId = 0; // Use a global ID counter for _flatMap
 
-    // Reset the _nodeCahe map
-    _nodeCache = <int, ElementNode>{};
-
+    // Populate _flatMap with all nodes and assign unique IDs
     for (var rootNode in rootNodesList) {
-      _nodeCache[index] = rootNode;
-      _nodeCache[index]?.onCollapseStateChange = onCollapseStateChanged;
-      _nodeCache[index]?.onSelected = onSelected;
-      rootNode.id = index;
-      index++;
-      for (int i = 1; i < rootNode.length; i++) {
-        _nodeCache[index] = rootNode.getChild(i, 0);
-        _nodeCache[index]?.id = index;
-        _nodeCache[index]?.onCollapseStateChange = onCollapseStateChanged;
-        _nodeCache[index]?.onSelected = onSelected;
-        index++;
-      }
+      globalId = _populateFlatMap(rootNode, null, globalId);
     }
 
-    // Store the original nodes in the FlatMap
-    _flatMap = Map.from(_nodeCache);
+    // Now build the initial _nodeCache based on collapsed state
+    _rebuildNodeCache();
 
-    // Set the RequestRebuildCallback coming from the Nodes
     requestRebuildCallback = rebuildCallback;
-    _scrollController = scrollController;
+    onScrollToNode = scrollCallback;
   }
 
-  void scrollToNode(int id) {
-    _scrollController.animateTo(
-      id * 50.0, // Assuming each node has a height of 50.0, adjust as needed
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
-    onSelected(id, true);
+  // Helper to populate _flatMap and assign IDs
+  int _populateFlatMap(ElementNode node, ElementNode? parent, int currentId) {
+    node.id = currentId; // Assign ID
+    node.parent = parent; // Assign parent
+    _flatMap[currentId] = node; // Add to flatMap
+    node.onCollapseStateChange = onCollapseStateChanged; // Set callbacks
+    node.onSelected = onSelected; // Set callbacks
+
+    int nextId = currentId;
+    for (var child in node.children) {
+      nextId = _populateFlatMap(child, node, nextId + 1); // Recursively populate children
+    }
+    return nextId; // Return the last assigned ID in this subtree
   }
 
   int get itemCount {
@@ -111,75 +105,68 @@ class ElementNodeController {
   /// NOTE: This method does to trigger a widget tree rebuild
   ///
   void collapseNode(int id) {
-    rebuildNodeCacheAfterNodeCollapseChange(id);
-
     // Invert the isCollapsed state
     _flatMap[id]!.isCollapsed = !_flatMap[id]!.isCollapsed;
+    _rebuildNodeCache();
+    requestRebuildCallback();
   }
 
   void rebuildNodeCacheAfterNodeCollapseChange(int id) {
-    Map<int, ElementNode> lNodeCache = <int, ElementNode>{};
-    int lIdxCollapsedNode = 0;
-    bool currentState = _flatMap[id]!.isCollapsed;
-
-    // ------------------- Rebuild the NodeCache
-    // First, takeover the nodes which are before the collapsed node
-    var lIdx = 0; // Index for the next free slot in the new lNodeCache
-    for (var node in _nodeCache.values) {
-      lNodeCache[lIdx] = node;
-      if (node.id == id) {
-        // Exit condition when the node is found
-        lIdxCollapsedNode = lIdx;
-        // Takeover the node being collapsed
-        break;
-      }
-      lIdx++;
-    }
-    var lVisibleLength = _nodeCache[lIdxCollapsedNode]!.visibleLength;
-    var totalLength = _nodeCache.values.length;
-    var lUncollapsedLength = _nodeCache[lIdxCollapsedNode]!.uncollapsedLength;
-    // The visibleLength includes the length of the element itself
-    var lVisibleCollapsingLength = lVisibleLength - 1;
-
-    // Increment to have the lIdx pointing to the next free slot (next slot after the collapsed node)
-    lIdx++;
-
-    // Then, starting from index apply the displacement based on child size
-    if (currentState == false) {
-      // If collapsing
-      for (var i = lIdx; i < (totalLength - lVisibleCollapsingLength); i++) {
-        if (i + (lVisibleCollapsingLength) <= totalLength) {
-          lNodeCache[i] = _nodeCache[i + lVisibleCollapsingLength]!;
-          // lNodeCache[i]!.id = i;
-        }
-      }
-    } else {
-      // If uncollapsing
-      // Reload the childs of the collapsed node
-      var lNodeUncollapsed = _nodeCache[lIdxCollapsedNode]!;
-      int lFlatMapNextNodeIdx = lNodeUncollapsed.id + 1;
-      for (var i = 0; i < lUncollapsedLength - 1; i++, lIdx++) {
-        var lNodeActive = _flatMap[lFlatMapNextNodeIdx]!;
-
-        lNodeCache[lIdx] = _flatMap[lFlatMapNextNodeIdx]!;
-        // lNodeCache[lIdx]!.id = lIdx;
-        if (lNodeActive.isCollapsed == false) {
-          lFlatMapNextNodeIdx += 1;
-        } else {
-          lFlatMapNextNodeIdx += lNodeActive.uncollapsedLength;
-        }
-      }
-
-      for (var i = lIdxCollapsedNode + lVisibleLength;
-          i < totalLength;
-          i++, lIdx++) {
-        lNodeCache[lIdx] = _nodeCache[i]!;
-        // lNodeCache[lIdx]!.id = lIdx;
-      }
-    }
-
-    _nodeCache = Map.from(lNodeCache);
-
+    // Invert the isCollapsed state
+    _flatMap[id]!.isCollapsed = !_flatMap[id]!.isCollapsed;
+    _rebuildNodeCache();
     requestRebuildCallback();
+  }
+
+  void collapseAll() {
+    for (var node in _flatMap.values) {
+      node.isCollapsed = true;
+    }
+    _rebuildNodeCache();
+    requestRebuildCallback();
+  }
+
+  void expandAll() {
+    for (var node in _flatMap.values) {
+      node.isCollapsed = false;
+    }
+    _rebuildNodeCache();
+    requestRebuildCallback();
+  }
+
+  void expandUntilNode(int id) {
+    var node = _flatMap[id];
+    if (node == null) return;
+
+    // Expand all parents of the node
+    var parent = node.parent;
+    while (parent != null) {
+      if (parent.isCollapsed) {
+        parent.isCollapsed = false;
+      }
+      parent = parent.parent;
+    }
+    _rebuildNodeCache();
+    requestRebuildCallback();
+  }
+
+  void _rebuildNodeCache() {
+    _nodeCache.clear();
+    int index = 0;
+    for (var rootNode in rootNodesList) {
+      index = _addVisibleNodesToCache(rootNode, index);
+    }
+  }
+
+  // Helper to add only visible nodes to _nodeCache
+  int _addVisibleNodesToCache(ElementNode node, int currentIndex) {
+    _nodeCache[currentIndex] = node;
+    int nextIndex = currentIndex;
+    if (!node.isCollapsed) {
+      for (var child in node.children) {
+        nextIndex = _addVisibleNodesToCache(child, nextIndex + 1);
+      }
+    }
+    return nextIndex;
   }
 }

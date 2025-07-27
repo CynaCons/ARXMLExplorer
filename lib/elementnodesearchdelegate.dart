@@ -1,13 +1,43 @@
 import 'package:flutter/material.dart';
-import 'package:ARXMLExplorer/elementnodecontroller.dart';
-import 'package:ARXMLExplorer/elementnode.dart';
-import 'package:ARXMLExplorer/elementnodewidget.dart';
+import 'package:arxml_explorer/elementnodecontroller.dart';
+import 'package:arxml_explorer/elementnode.dart';
+
 
 class CustomSearchDelegate extends SearchDelegate<String> {
   final GlobalKey<ScaffoldState> scaffoldKey;
   final ElementNodeController nodeController;
+  final bool isCaseSensitive;
+  final bool isWholeWord;
 
-  CustomSearchDelegate(this.scaffoldKey, this.nodeController);
+  CustomSearchDelegate(this.scaffoldKey, this.nodeController, {this.isCaseSensitive = false, this.isWholeWord = false});
+
+  bool _matchesQuery(String? text, String query) {
+    if (text == null || text.isEmpty) return false;
+
+    String searchText = isCaseSensitive ? text : text.toLowerCase();
+    String searchQuery = isCaseSensitive ? query : query.toLowerCase();
+
+    if (isWholeWord) {
+      return RegExp(r'\b' + RegExp.escape(searchQuery) + r'\b').hasMatch(searchText);
+    } else {
+      return searchText.contains(searchQuery);
+    }
+  }
+
+  List<ElementNode> _performSearch(String query) {
+    if (query.isEmpty) {
+      return [];
+    }
+
+    return nodeController.flatMapValues.where((node) {
+      final combinedText = '${node.elementText} ${node.shortname} ${node.definitionRef}'.trim();
+      return _matchesQuery(combinedText, query) || 
+             _matchesQuery(node.elementText, query) ||
+             _matchesQuery(node.shortname, query) ||
+             _matchesQuery(node.definitionRef, query);
+    }).toList();
+  }
+
   @override
   List<Widget> buildActions(BuildContext context) {
     return [
@@ -32,12 +62,7 @@ class CustomSearchDelegate extends SearchDelegate<String> {
 
   @override
   Widget buildResults(BuildContext context) {
-    final List<ElementNode> searchResults = nodeController.flatMapValues
-        .where((node) =>
-            node.elementText.toLowerCase().contains(query.toLowerCase()) ||
-            node.shortname.toLowerCase().contains(query.toLowerCase()) ||
-            node.definitionRef.toLowerCase().contains(query.toLowerCase()))
-        .toList();
+    final List<ElementNode> searchResults = _performSearch(query);
 
     return ListView.builder(
       itemCount: searchResults.length,
@@ -47,7 +72,9 @@ class CustomSearchDelegate extends SearchDelegate<String> {
           title: Text(node.elementText),
           subtitle: Text('${node.shortname} ${node.definitionRef}'.trim()),
           onTap: () {
-            nodeController.scrollToNode(node.id);
+            // When a result is tapped, expand its parents and scroll to it
+            nodeController.expandUntilNode(node.id);
+            nodeController.onScrollToNode(node.id);
             close(context, node.elementText);
           },
         );
@@ -57,14 +84,7 @@ class CustomSearchDelegate extends SearchDelegate<String> {
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    final List<ElementNode> suggestionList = query.isEmpty
-        ? []
-        : nodeController.flatMapValues
-            .where((node) =>
-                node.elementText.toLowerCase().startsWith(query.toLowerCase()) ||
-                node.shortname.toLowerCase().startsWith(query.toLowerCase()) ||
-                node.definitionRef.toLowerCase().startsWith(query.toLowerCase()))
-            .toList();
+    final List<ElementNode> suggestionList = _performSearch(query);
 
     return ListView.builder(
       itemCount: suggestionList.length,
@@ -74,8 +94,10 @@ class CustomSearchDelegate extends SearchDelegate<String> {
           title: Text(node.elementText),
           subtitle: Text('${node.shortname} ${node.definitionRef}'.trim()),
           onTap: () {
-            query = node.elementText;
-            showResults(context);
+            // When a suggestion is tapped, expand its parents and scroll to it
+            nodeController.expandUntilNode(node.id);
+            nodeController.onScrollToNode(node.id);
+            close(context, node.elementText);
           },
         );
       },

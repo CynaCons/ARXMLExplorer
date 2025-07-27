@@ -1,7 +1,7 @@
 import 'dart:developer' as developer;
 
 import 'package:flutter/cupertino.dart';
-import 'package:ARXMLExplorer/elementnodecontroller.dart';
+import 'package:arxml_explorer/elementnodecontroller.dart';
 
 /// TODO The function getChild is misleading. IF given a requestedIndex == 0 it returns the node itself and not a child
 
@@ -21,6 +21,7 @@ class ElementNode {
   void Function(int, bool)? onCollapseStateChange;
   void Function(int, bool)? onSelected;
   ElementNodeController nodeController;
+  ElementNode? parent;
 
   ElementNode(
       {this.elementText = "",

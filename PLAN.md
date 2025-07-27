@@ -2,70 +2,102 @@
 
 ## Checklist
 
-- [ ] Phase 1: Fix Current Build Issues and Basic Search
-    - [X] Fix "Too many positional arguments" error in `main.dart`
-    - [X] Implement `buildResults` in `elementnodesearchdelegate.dart`
-    - [X] Implement `buildSuggestions` in `elementnodesearchdelegate.dart`
-    - [X] Verify search functionality
+- [X] **Urgent: Fix Collapsing/Search Bug**
+    - [X] Enhance tests to cover node ID assignment and child node collapsing.
+    - [X] Fix the root cause in the `ElementNodeController` by assigning unique IDs to all nodes.
+    - [X] Validate the fix with the enhanced tests.
+- [ ] Phase 0: Codebase Cleanup & Stability
+    - [X] Remove redundant code/comments (`TASKLIST`, unused `_focusNode`)
+    - [X] Refactor `scrollToNode` for accurate scrolling
+    - [X] Add basic error handling for file operations
+    - [X] Introduce basic testing framework/first test
+        - [X] Refactor `ARXMLFileLoader` to separate file picking and XML parsing
+        - [X] Write unit test for XML parsing logic
+- [ ] Phase 1: Enhance Search & Navigation
+    - [X] Improve search functionality (e.g., case sensitivity, whole word, regex)
+    - [X] Improve collapsing/uncollapsing efficiency for large files
+    - [X] Implement "Collapse All" and "Expand All" buttons
+    - [X] Implement default collapsing of 'DEFINITION-REF' and 'SHORT-NAME' nodes
 - [ ] Phase 2: Enhance File Handling and Multi-File Support
-    - [ ] Implement "Create New File" functionality
-    - [ ] Implement "Close File" functionality
-    - [ ] Implement "Remove File" functionality
-    - [ ] Design and implement UI for managing multiple open files (tabs or similar)
-    - [ ] Update file loading to support multiple files
+    - [X] Implement "Create New File" functionality
+    - [X] Implement "Close File" functionality
+    - [X] Implement "Remove File" functionality
+    - [X] Design and implement UI for managing multiple open files (tabs or similar)
+    - [X] Update file loading to support multiple files
 - [ ] Phase 3: Implement Basic Editing Features
-    - [ ] Design and implement UI for editing existing element values
-    - [ ] Implement basic validation for edited values (e.g., data type checks)
+    - [X] Design and implement UI for editing existing element values
+    - [X] Implement basic validation for edited values (e.g., data type checks)
 - [ ] Phase 4: Advanced Editing and Schema Compliance
-    - [ ] Integrate AUTOSAR meta-model and XSD for validation during editing and creation
-    - [ ] Implement UI for creating new elements (schema-aware)
-    - [ ] Implement UI for deleting elements
+    - [X] Integrate AUTOSAR meta-model and XSD for validation during editing and creation
+    - [X] Implement UI for creating new elements (schema-aware)
+    - [X] Implement UI for deleting elements
 - [ ] Phase 5: Refinements and Visual Enhancements
-    - [ ] Improve collapsing/uncollapsing efficiency for large files
-    - [ ] Implement visual features for depth indication (e.g., spaced dots/horizontal dashes)
-    - [ ] Implement visual cues for parent-child relationships
-    - [ ] Implement "Collapse All" and "Expand All" buttons
-    - [ ] Add loading indicator for ARXML processing
-    - [ ] Optimize scrolling performance
+    - [X] Implement visual features for depth indication (e.g., spaced dots/horizontal dashes)
+    - [X] Implement visual cues for parent-child relationships
+    - [X] Add loading indicator for ARXML processing
+    - [X] Optimize scrolling performance
 
 ## Detailed Plan
 
-### Phase 1: Fix Current Build Issues and Basic Search
+### Phase 0: Codebase Cleanup & Stability
 
-**Goal:** Get the application building and running, and implement the core search functionality as described in the PRD.
+**Goal:** Address immediate code quality issues, improve stability, and lay the groundwork for more robust development.
 
 **Steps:**
 
-1.  **Fix "Too many positional arguments" error in `main.dart`:**
-    *   **Analysis:** Re-examine `lib/main.dart` around line 115 and the `KeyboardListener` and `showSearch` calls. The error indicates `showSearch` is being called incorrectly. It's likely that the `KeyboardListener`'s `onKeyEvent` is not the right place for this, or the `showSearch` call itself is malformed.
-    *   **Proposed Change:** Remove the `KeyboardListener` and its `onKeyEvent` entirely. The search functionality is already triggered by an `IconButton` in the `AppBar`. The `KeyboardListener` was likely an attempt to add a keyboard shortcut, but it's causing a build error and is not strictly necessary for the core search feature.
-    *   **Verification:** Attempt to build and run the application after this change.
-
-2.  **Implement `buildResults` in `elementnodesearchdelegate.dart`:**
-    *   **Analysis:** The `PRD.md` states: "ARXMLExplorer shall be able to search keywords within the opened documents and display search results". The `elementnodesearchdelegate.dart` file has placeholder `buildResults` and `buildSuggestions` methods. The `ElementNodeController` has a `_flatMap` which contains all nodes.
+1.  **Remove redundant code/comments (`TASKLIST`, unused `_focusNode`):**
+    *   **Analysis:** The `TASKLIST` comments in `lib/main.dart` are now redundant with the `PRD.md` and `PLAN.md`. The `_focusNode` in `lib/main.dart` is declared but unused after the `KeyboardListener` was removed.
     *   **Proposed Change:**
-        *   In `lib/elementnodesearchdelegate.dart`, modify `CustomSearchDelegate` to accept an `ElementNodeController` in its constructor.
-        *   In `buildResults`, access the `_flatMap` from the `ElementNodeController`.
-        *   Filter the `_flatMap` to find `ElementNode` objects whose `name` or `value` (or other relevant properties) contain the `query` string (case-insensitive).
-        *   Return a `ListView.builder` that displays the matching `ElementNode` objects using `ElementNodeWidget`. Each search result should be clickable to jump to its location in the main tree view (this will require adding a method to `ElementNodeController` to scroll to a specific node).
-    *   **Verification:** Manually test the search functionality by typing queries and verifying the results.
+        *   Delete the `TASKLIST` block from `lib/main.dart`.
+        *   Remove the `_focusNode` declaration from `lib/main.dart`.
+    *   **Verification:** Ensure the application still builds and runs without errors.
 
-3.  **Implement `buildSuggestions` in `elementnodesearchdelegate.dart`:**
-    *   **Analysis:** Similar to `buildResults`, but for displaying suggestions as the user types.
+2.  **Refactor `scrollToNode` for accurate scrolling:**
+    *   **Analysis:** The current `scrollToNode` in `elementnodecontroller.dart` uses a hardcoded `id * 50.0` for scrolling, which is brittle and assumes a fixed item height.
     *   **Proposed Change:**
-        *   In `buildSuggestions`, filter the `_flatMap` based on whether the `query` is a prefix of any node's `name` or `value`.
-        *   Display these suggestions in a `ListView.builder`. When a suggestion is tapped, set the `query` to the suggestion and show the results.
-    *   **Verification:** Manually test by typing partial queries and observing suggestions.
+        *   In `lib/main.dart`, when building the `ListView.builder`, assign a `GlobalKey` to each `ElementNodeWidget` or use `Scrollable.ensureVisible` if appropriate for the context.
+        *   In `lib/elementnodecontroller.dart`, modify `scrollToNode` to use `_scrollController.position.ensureVisible` or calculate the exact offset based on the `RenderBox` of the target `ElementNodeWidget`.
+    *   **Verification:** Test scrolling to various nodes, especially in files with varying content, to ensure accurate and smooth navigation.
 
-4.  **Verify search functionality:**
-    *   **Steps:**
-        *   Run the application.
-        *   Open an ARXML file.
-        *   Click the search icon.
-        *   Type various search queries (full words, partial words, case variations).
-        *   Verify that relevant results are displayed in `buildResults`.
-        *   Verify that relevant suggestions appear in `buildSuggestions`.
-        *   Verify that clicking a search result navigates to the corresponding node in the main view.
+3.  **Add basic error handling for file operations:**
+    *   **Analysis:** The current file loading (`_openFile` in `lib/main.dart`) lacks explicit error handling for scenarios like file not found, permission issues, or malformed XML.
+    *   **Proposed Change:**
+        *   Wrap the `_arxmlLoader.openFile` call in `_openFile` with a `try-catch` block.
+        *   Display user-friendly error messages (e.g., using a `SnackBar` or `AlertDialog`) if an error occurs during file loading.
+    *   **Verification:** Test by attempting to open non-existent files, files with incorrect permissions, and malformed XML files.
+
+4.  **Introduce basic testing framework/first test:**
+    *   **Analysis:** The project currently lacks comprehensive automated tests, making refactoring and new feature development risky.
+    *   **Proposed Change:**
+        *   Set up a basic unit testing structure (if not already present beyond `widget_test.dart`).
+        *   Write a simple unit test for a core component, e.g., `ARXMLFileLoader` (to test its `openFile` method with a mock file) or `ElementNodeController` (to test `init` or `getNode`).
+    *   **Verification:** Run the newly created test and ensure it passes.
+
+### Phase 1: Enhance Search & Navigation
+
+**Goal:** Improve the search experience and implement advanced navigation features.
+
+**Steps:**
+
+1.  **Improve search functionality (e.g., case sensitivity, whole word, regex):**
+    *   **Analysis:** The current search is basic string matching.
+    *   **Proposed Change:** Add options to the search UI (e.g., checkboxes or a dropdown) for case-sensitive search, whole-word matching, and potentially regular expression search. Update the filtering logic in `elementnodesearchdelegate.dart` accordingly.
+    *   **Verification:** Test all new search options with various queries.
+
+2.  **Improve collapsing/uncollapsing efficiency for large files:**
+    *   **Analysis:** The `PRD.md` mentions "The OnCollapsedChange is not working for large file. Too much recursion." This indicates a performance bottleneck.
+    *   **Proposed Change:** Revisit the `ElementNodeController`'s `_nodeCache` and `_flatMap` management. Consider a more efficient data structure or algorithm for updating the visible nodes when collapsing/uncollapsing, perhaps by only updating the affected range rather than rebuilding the entire cache.
+    *   **Verification:** Test with very large ARXML files and measure the performance of collapsing/uncollapsing.
+
+3.  **Implement "Collapse All" and "Expand All" buttons:**
+    *   **Analysis:** These are common features for tree views.
+    *   **Proposed Change:** Add buttons to the `AppBar` or a dedicated toolbar. Implement methods in `ElementNodeController` to set all nodes to collapsed or expanded state and trigger a full rebuild.
+    *   **Verification:** Test the functionality of these buttons.
+
+4.  **Implement default collapsing of 'DEFINITION-REF' and 'SHORT-NAME' nodes:**
+    *   **Analysis:** This is a specific visual enhancement requested in the PRD.
+    *   **Proposed Change:** Modify the ARXML parsing logic in `arxmlloader.dart` or the node processing in `elementnodearxmlprocessor.dart` to identify these specific node types and set their `isCollapsed` property to `true` by default during initialization.
+    *   **Verification:** Open ARXML files containing these node types and verify they are collapsed by default.
 
 ### Phase 2: Enhance File Handling and Multi-File Support
 
@@ -148,32 +180,22 @@
 
 **Steps:**
 
-1.  **Improve collapsing/uncollapsing efficiency for large files:**
-    *   **Analysis:** The `PRD.md` mentions "The OnCollapsedChange is not working for large file. Too much recursion." This indicates a performance bottleneck. The current `rebuildNodeCacheAfterNodeCollapseChange` might be inefficient for deep or wide trees.
-    *   **Proposed Change:** Revisit the `ElementNodeController`'s `_nodeCache` and `_flatMap` management. Consider a more efficient data structure or algorithm for updating the visible nodes when collapsing/uncollapsing, perhaps by only updating the affected range rather than rebuilding the entire cache.
-    *   **Verification:** Test with very large ARXML files and measure the performance of collapsing/uncollapsing.
-
-2.  **Implement visual features for depth indication (e.g., spaced dots/horizontal dashes):**
+1.  **Implement visual features for depth indication (e.g., spaced dots/horizontal dashes):**
     *   **Design:** Replace `SizedBox` with a more visually distinct depth indicator.
     *   **Implementation:** Modify `ElementNodeWidget` to render dots, dashes, or other visual cues based on the node's depth.
     *   **Verification:** Visually inspect the tree view to ensure depth is clearly indicated.
 
-3.  **Implement visual cues for parent-child relationships:**
+2.  **Implement visual cues for parent-child relationships:**
     *   **Design:** Consider using lines, connectors, or indentation guides to visually link parent and child nodes.
     *   **Implementation:** Modify `ElementNodeWidget` and potentially its parent to draw these visual connectors.
     *   **Verification:** Visually inspect the tree view.
 
-4.  **Implement "Collapse All" and "Expand All" buttons:**
-    *   **Design:** Add buttons to the `AppBar` or a dedicated toolbar.
-    *   **Implementation:** Add methods to `ElementNodeController` to collapse/expand all nodes and trigger a full rebuild.
-    *   **Verification:** Test the functionality of these buttons.
-
-5.  **Add loading indicator for ARXML processing:**
+3.  **Add loading indicator for ARXML processing:**
     *   **Design:** Display a progress indicator (e.g., `CircularProgressIndicator`) when a file is being loaded or processed.
     *   **Implementation:** Show the indicator before `_arxmlLoader.openFile` and hide it after processing is complete.
     *   **Verification:** Open a large file and observe the loading indicator.
 
-6.  **Optimize scrolling performance:**
-    *   **Analysis:** The `PRD.md` mentions "Compare the scrolling performance of pure text VS what we do. Find a way to improve the scrolling performance but maybe loading just the text first and then the complete stuff". This suggests that rendering complex `ElementNodeWidget`s for all visible items might be slow.
+4.  **Optimize scrolling performance:**
+    *   **Analysis:** The `PRD.md` mentions "Compare the scrolling performance of pure text VS what we do. Find a way to improve the scrolling performance but maybe loading just the text first and then the complete stuff".
     *   **Proposed Change:** Investigate Flutter's performance optimization techniques for `ListView.builder`, such as `addAutomaticKeepAlives`, `addRepaintBoundaries`, or `addSemanticIndexes`. If necessary, consider lazy loading of complex widget parts or rendering a simpler text-only view initially, then progressively enhancing it.
     *   **Verification:** Test scrolling performance with large files and compare it to a simple text view.
