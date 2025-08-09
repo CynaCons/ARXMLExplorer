@@ -347,6 +347,24 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     final treeState = _ref.read(activeTab.treeStateProvider);
     final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
     await File(activeTab.path).writeAsString(xmlString);
+    // Clear dirty flag for the saved tab
+    final idx = state.indexWhere((t) => t.path == activeTab.path);
+    if (idx != -1) {
+      final updated = List<FileTabState>.from(state);
+      updated[idx] = updated[idx].copyWith(isDirty: false);
+      state = updated;
+    }
+  }
+
+  Future<void> saveAllFiles() async {
+    for (var i = 0; i < state.length; i++) {
+      final tab = state[i];
+      final treeState = _ref.read(tab.treeStateProvider);
+      final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
+      await File(tab.path).writeAsString(xmlString);
+    }
+    // Clear all dirty flags
+    state = [for (final t in state) t.copyWith(isDirty: false)];
   }
 
   void closeFile(int index) {
@@ -402,7 +420,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
 
       final tab = FileTabState(
         path: filePath,
-        treeStateProvider: arxmlTreeStateProvider(nodes!),
+        treeStateProvider: arxmlTreeStateProvider(nodes),
         xsdParser: xsdForTab,
         xsdPath: xsdPath,
       );
@@ -664,12 +682,17 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
               icon: const Icon(Icons.create_new_folder),
               onPressed: notifier.createNewFile),
           IconButton(
-            icon: const Icon(Icons.folder_open),
-            tooltip: 'Open Workspace (index only, no tabs)',
-            onPressed: () => ref
-                .read(workspaceIndexProvider.notifier)
-                .pickAndIndexWorkspace(),
+            icon: const Icon(Icons.save_alt),
+            tooltip: 'Save All',
+            onPressed: notifier.saveAllFiles,
           ),
+          IconButton(
+               icon: const Icon(Icons.folder_open),
+               tooltip: 'Open Workspace (index only, no tabs)',
+               onPressed: () => ref
+                   .read(workspaceIndexProvider.notifier)
+                   .pickAndIndexWorkspace(),
+           ),
           IconButton(
               icon: const Icon(Icons.save), onPressed: notifier.saveActiveFile),
           IconButton(
