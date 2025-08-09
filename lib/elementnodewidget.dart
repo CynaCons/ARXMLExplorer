@@ -23,6 +23,8 @@ class ElementNodeWidget extends ConsumerStatefulWidget {
 }
 
 class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
+  bool _isHovered = false;
+
   void _showContextMenu(BuildContext context, Offset tapPosition) {
     final notifier = ref.read(widget.treeStateProvider.notifier);
     notifier.setContextMenuNode(widget.node.id);
@@ -31,10 +33,18 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
         Overlay.of(context).context.findRenderObject() as RenderBox;
 
     final items = <PopupMenuEntry<String>>[];
-    if (_canEditValue(widget.node)) {
+    final isContainerWithText = widget.node.children.length == 1 &&
+        widget.node.children.first.children.isEmpty;
+    final isLeafValue = widget.node.children.isEmpty;
+
+    if (isContainerWithText) {
       items.add(const PopupMenuItem<String>(
-          value: 'edit', child: Text('Edit Value')));
+          value: 'edit_tag', child: Text('Rename Tag')));
+    } else if (isLeafValue) {
+      items.add(const PopupMenuItem<String>(
+          value: 'edit_value', child: Text('Edit Value')));
     }
+
     items.addAll(const [
       PopupMenuItem<String>(value: 'add', child: Text('Add Child')),
       PopupMenuItem<String>(value: 'delete', child: Text('Delete Node')),
@@ -63,8 +73,11 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
   void _handleMenuSelection(String value) {
     final notifier = ref.read(widget.treeStateProvider.notifier);
     switch (value) {
-      case 'edit':
+      case 'edit_value':
         _showEditDialog(widget.node);
+        break;
+      case 'edit_tag':
+        _showRenameTagDialog(widget.node);
         break;
       case 'add':
         _showAddChildDialog(widget.node);
@@ -79,8 +92,11 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
     if (!_canEditValue(node)) return;
     final hasTextChild =
         node.children.length == 1 && node.children.first.children.isEmpty;
-    final TextEditingController controller = TextEditingController(
-        text: hasTextChild ? node.children.first.elementText : '');
+    final initialText = hasTextChild
+        ? node.children.first.elementText
+        : node.elementText; // prefill for leaf nodes
+    final TextEditingController controller =
+        TextEditingController(text: initialText);
     showDialog(
       context: context,
       builder: (context) {
@@ -98,6 +114,41 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                 ref
                     .read(widget.treeStateProvider.notifier)
                     .editNodeValue(node.id, controller.text);
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showRenameTagDialog(ElementNode node) {
+    final controller = TextEditingController(text: node.elementText);
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Rename Tag'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'New tag name',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            TextButton(
+              child: const Text('Save'),
+              onPressed: () {
+                ref
+                    .read(widget.treeStateProvider.notifier)
+                    .renameNodeTag(node.id, controller.text.trim());
                 Navigator.of(context).pop();
               },
             ),
@@ -168,9 +219,10 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                   child: const Text('Add'),
                   onPressed: canAdd
                       ? () {
-                          final name = selectedElement?.trim().isNotEmpty == true
-                              ? selectedElement!
-                              : customController.text.trim();
+                          final name =
+                              selectedElement?.trim().isNotEmpty == true
+                                  ? selectedElement!
+                                  : customController.text.trim();
                           if (name.isNotEmpty) {
                             ref
                                 .read(widget.treeStateProvider.notifier)
@@ -194,39 +246,54 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
     final isHighlighted = treeState.contextMenuNodeId == widget.node.id;
     final colorScheme = Theme.of(context).colorScheme;
 
-    final tileColor = isHighlighted ? colorScheme.primaryContainer : null;
+    final highlightColor = colorScheme.primaryContainer; // context menu focus
+    final hoverColor = colorScheme.secondaryContainer.withOpacity(0.18);
+    final bgColor = isHighlighted
+        ? highlightColor
+        : (_isHovered ? hoverColor : null);
 
-    return GestureDetector(
-      onSecondaryTapDown: (details) =>
-          _showContextMenu(context, details.globalPosition),
-      child: ListTile(
-        tileColor: tileColor,
-        leading: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DepthIndicator(depth: widget.node.depth, isLastChild: false),
-            if (widget.node.children.isNotEmpty)
-              IconButton(
-                iconSize: 24,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                icon: Icon(widget.node.isCollapsed
-                    ? Icons.chevron_right
-                    : Icons.expand_more),
-                onPressed: () => ref
-                    .read(widget.treeStateProvider.notifier)
-                    .toggleNodeCollapse(widget.node.id),
-              )
-            else
-              const SizedBox(width: 40),
-          ],
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        color: bgColor,
+        child: GestureDetector(
+          onSecondaryTapDown: (details) =>
+              _showContextMenu(context, details.globalPosition),
+          child: ListTile(
+            tileColor: Colors.transparent,
+            leading: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DepthIndicator(depth: widget.node.depth, isLastChild: false),
+                if (widget.node.children.isNotEmpty)
+                  IconButton(
+                    iconSize: 24,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: AnimatedRotation(
+                      turns: widget.node.isCollapsed ? 0.0 : 0.25,
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      child: const Icon(Icons.chevron_right),
+                    ),
+                    onPressed: () => ref
+                        .read(widget.treeStateProvider.notifier)
+                        .toggleNodeCollapse(widget.node.id),
+                  )
+                else
+                  const SizedBox(width: 40),
+              ],
+            ),
+            title: Text(
+                "${widget.node.elementText} ${widget.node.shortname} ${widget.node.definitionRef}".trim()),
+            onTap: () {
+              // Handle selection state via provider if needed
+            },
+          ),
         ),
-        title: Text(
-            "${widget.node.elementText} ${widget.node.shortname} ${widget.node.definitionRef}"
-                .trim()),
-        onTap: () {
-          // Handle selection state via provider if needed
-        },
       ),
     );
   }

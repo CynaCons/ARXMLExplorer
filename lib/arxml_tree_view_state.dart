@@ -123,6 +123,13 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     }
   }
 
+  void renameNodeTag(int nodeId, String newTag) {
+    final node = state.flatMap[nodeId];
+    if (node == null) return;
+    node.elementText = newTag;
+    state = state.copyWith();
+  }
+
   void addChildNode(int parentId, String elementName) {
     final parent = state.flatMap[parentId];
     if (parent == null) return;
