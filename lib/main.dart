@@ -2,26 +2,195 @@ import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
-
-
-import 'package:arxml_explorer/elementnodecontroller.dart';
+import 'package:arxml_explorer/arxml_tree_view_state.dart';
 import 'package:arxml_explorer/xsd_parser.dart';
-
-// Self-made packages
-import 'elementnode.dart';
 import 'elementnodewidget.dart';
 import 'arxmlloader.dart';
 import 'elementnodesearchdelegate.dart';
 
-/// Once concept would be to askthe higher-level nodes for the nodeId
-/// Each node holds the range of nodeId which he has as childs, and if not found, he asks the parent node.
-///
-/// Another concept, probably better would be to have a global node cache with immediate and deterministic time access.
-/// Nodes only need to know the NodeController
+// Providers
+final fileTabsProvider =
+    StateNotifierProvider<FileTabsNotifier, List<FileTabState>>((ref) {
+  return FileTabsNotifier(ref);
+});
 
+final loadingStateProvider = StateProvider<bool>((ref) => false);
+
+final activeTabIndexProvider = StateProvider<int>((ref) => 0);
+
+final activeTabProvider = Provider<FileTabState?>((ref) {
+  final tabs = ref.watch(fileTabsProvider);
+  final activeTabIndex = ref.watch(activeTabIndexProvider);
+  if (tabs.isEmpty || activeTabIndex >= tabs.length) return null;
+  return tabs[activeTabIndex];
+});
+
+// State Notifier
+class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
+  final Ref _ref;
+  FileTabsNotifier(this._ref) : super([]);
+
+  final ARXMLFileLoader _arxmlLoader = const ARXMLFileLoader();
+  XsdParser? _xsdParser;
+  String? _defaultXsdPath;
+
+  // Load the default AUTOSAR XSD schema
+  Future<void> _loadXsdSchema() async {
+    if (_xsdParser != null) return; // Already loaded
+
+    try {
+      final xsdFile = File('lib/res/xsd/AUTOSAR_00050.xsd');
+      if (await xsdFile.exists()) {
+        _defaultXsdPath = xsdFile.path;
+        final xsdContent = await xsdFile.readAsString();
+        _xsdParser = XsdParser(xsdContent);
+      }
+    } catch (e) {
+      // Schema loading failed, continue without schema validation
+      print('Warning: Could not load XSD schema: $e');
+    }
+  }
+
+  Future<void> pickXsdForActiveTab() async {
+    final activeIndex = _ref.read(activeTabIndexProvider);
+    if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) return;
+
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xsd'],
+    );
+
+    if (result != null && result.files.single.path != null) {
+      final filePath = result.files.single.path!;
+      try {
+        final content = await File(filePath).readAsString();
+        final parser = XsdParser(content);
+        final updated = [...state];
+        final tab = updated[activeIndex];
+        updated[activeIndex] = FileTabState(
+          path: tab.path,
+          treeStateProvider: tab.treeStateProvider,
+          xsdParser: parser,
+          xsdPath: filePath,
+        );
+        state = updated;
+      } catch (e) {
+        print('Error loading selected XSD: $e');
+      }
+    }
+  }
+
+  Future<void> openNewFile() async {
+    print('DEBUG: openNewFile called');
+    try {
+      _ref.read(loadingStateProvider.notifier).state = true;
+      print('DEBUG: Loading state set to true');
+
+      // Load XSD schema if not already loaded
+      await _loadXsdSchema();
+      print('DEBUG: XSD schema loading completed');
+
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['arxml', 'xml'],
+      );
+      print('DEBUG: File picker result: ${result?.files.length ?? 0} files');
+
+      if (result != null && result.files.single.path != null) {
+        final filePath = result.files.single.path!;
+        print('DEBUG: Selected file path: $filePath');
+
+        final fileContent = await File(filePath).readAsString();
+        print('DEBUG: File content loaded, length: ${fileContent.length}');
+
+        final nodes = _arxmlLoader.parseXmlContent(fileContent);
+        print('DEBUG: XML parsed, nodes count: ${nodes.length}');
+
+        final newTab = FileTabState(
+          path: filePath,
+          treeStateProvider: arxmlTreeStateProvider(nodes),
+          xsdParser: _xsdParser,
+          xsdPath: _defaultXsdPath,
+        );
+
+        state = [...state, newTab];
+        _ref.read(activeTabIndexProvider.notifier).state = state.length - 1;
+        print('DEBUG: New tab added, total tabs: ${state.length}');
+        print('DEBUG: Active tab index set to: ${state.length - 1}');
+
+        // Give a small delay to ensure state propagation
+        await Future.delayed(Duration(milliseconds: 100));
+        print('DEBUG: State propagation complete');
+      } else {
+        print('DEBUG: File picker cancelled or no file selected');
+      }
+    } catch (e, stackTrace) {
+      print('ERROR in openNewFile: $e');
+      print('Stack trace: $stackTrace');
+    } finally {
+      _ref.read(loadingStateProvider.notifier).state = false;
+      print('DEBUG: Loading state set to false');
+    }
+  }
+
+  Future<void> createNewFile() async {
+    // Load XSD schema if not already loaded
+    await _loadXsdSchema();
+
+    String? outputFile = await FilePicker.platform.saveFile(
+      dialogTitle: 'Please select where to save the new file:',
+      fileName: 'new_file.arxml',
+    );
+
+    if (outputFile != null) {
+      const String defaultContent = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+</AUTOSAR>
+''';
+      await File(outputFile).writeAsString(defaultContent);
+      // Now open the newly created file
+      final fileContent = await File(outputFile).readAsString();
+      final nodes = _arxmlLoader.parseXmlContent(fileContent);
+      final newTab = FileTabState(
+        path: outputFile,
+        treeStateProvider: arxmlTreeStateProvider(nodes),
+        xsdParser: _xsdParser,
+        xsdPath: _defaultXsdPath,
+      );
+      state = [...state, newTab];
+      _ref.read(activeTabIndexProvider.notifier).state = state.length - 1;
+    }
+  }
+
+  Future<void> saveActiveFile() async {
+    final activeTab = _ref.read(activeTabProvider);
+    if (activeTab == null) return;
+
+    final treeState = _ref.read(activeTab.treeStateProvider);
+    final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
+    await File(activeTab.path).writeAsString(xmlString);
+  }
+
+  void closeFile(int index) {
+    final newTabs = List.of(state)..removeAt(index);
+    if (newTabs.isEmpty) {
+      _ref.read(activeTabIndexProvider.notifier).state = 0;
+    } else {
+      final newActiveIndex =
+          (_ref.read(activeTabIndexProvider) - 1).clamp(0, newTabs.length - 1);
+      _ref.read(activeTabIndexProvider.notifier).state = newActiveIndex;
+    }
+    state = newTabs;
+  }
+}
+
+// Main App
 void main() {
-  runApp(const XmlExplorerApp());
+  runApp(const ProviderScope(child: XmlExplorerApp()));
 }
 
 class XmlExplorerApp extends StatelessWidget {
@@ -29,302 +198,275 @@ class XmlExplorerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Subtle palette inspired by T&S look & feel
+    const primary = Color(0xFF0D2A4A); // deep blue
+    const primaryContainer = Color(0xFF16406F); // lighter blue for gradients
+    const secondary = Color(0xFF00C2C7); // cyan accent
+    const secondaryContainer = Color(0xFF6FE4E7);
+    const background = Color(0xFFF7F9FC); // soft light background
+
+    final colorScheme = const ColorScheme.light(
+      primary: primary,
+      onPrimary: Colors.white,
+      primaryContainer: primaryContainer,
+      secondary: secondary,
+      onSecondary: Color(0xFF062238),
+      secondaryContainer: secondaryContainer,
+      background: background,
+      onBackground: primary,
+      surface: Colors.white,
+      onSurface: primary,
+    );
+
     return MaterialApp(
       title: 'ARXML Explorer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: colorScheme,
+        useMaterial3: true,
+        scaffoldBackgroundColor: background,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: IconThemeData(color: Colors.white),
+          titleTextStyle: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+          ),
+        ),
+        tooltipTheme: TooltipThemeData(
+          decoration: BoxDecoration(
+            color: primary.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          textStyle: const TextStyle(color: Colors.white),
+        ),
       ),
-      home: MyHomePage(title: 'ARXML Explorer'),
+      home: const MyHomePage(title: 'ARXML Explorer'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
+class MyHomePage extends ConsumerStatefulWidget {
   final String title;
-  final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
-
-  MyHomePage({super.key, required this.title});
+  const MyHomePage({super.key, required this.title});
 
   @override
-  State<MyHomePage> createState() => MyHomePageState();
+  ConsumerState<MyHomePage> createState() => _MyHomePageState();
 }
 
-class MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
-  int fabDepth = 1;
-
-  final List<ElementNodeController> _nodeControllers = [];
-  final List<String> _filePaths = [];
+class _MyHomePageState extends ConsumerState<MyHomePage>
+    with TickerProviderStateMixin {
   TabController? _tabController;
-  XsdParser? _xsdParser;
-  bool _isLoading = false;
-
-  final ARXMLFileLoader _arxmlLoader = const ARXMLFileLoader();
-
-  final ScrollController scrollController = ScrollController();
-
-  final Map<int, GlobalKey> _nodeKeys = {};
-
-  late final CustomSearchDelegate searchDelegate;
+  final ItemScrollController itemScrollController = ItemScrollController();
+  final ItemPositionsListener itemPositionsListener =
+      ItemPositionsListener.create();
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: _nodeControllers.length, vsync: this);
-    searchDelegate = CustomSearchDelegate(
-      widget.scaffoldKey,
-      _nodeControllers.isNotEmpty
-          ? _nodeControllers[_tabController!.index]
-          : ElementNodeController(),
-      isCaseSensitive: false,
-      isWholeWord: false,
-    );
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateTabController();
   }
 
-  void _loadXsdFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xsd'],
-    );
+  void _updateTabController() {
+    final tabs = ref.watch(fileTabsProvider);
+    final activeTabIndex = ref.watch(activeTabIndexProvider);
 
-    if (result != null) {
-      String? filePath = result.files.single.path;
-      if (filePath != null) {
-        File file = File(filePath);
-        final fileContent = file.readAsStringSync();
-        setState(() {
-          _xsdParser = XsdParser(fileContent);
+    print(
+        'DEBUG: _updateTabController - tabs.length: ${tabs.length}, activeTabIndex: $activeTabIndex');
+
+    // Only recreate TabController if the length actually changed or it's null
+    if (_tabController == null || _tabController!.length != tabs.length) {
+      print('DEBUG: Creating new TabController');
+      _tabController?.dispose();
+      if (tabs.isNotEmpty) {
+        final safeActiveIndex = activeTabIndex.clamp(0, tabs.length - 1);
+        print('DEBUG: SafeActiveIndex: $safeActiveIndex');
+        _tabController = TabController(
+            length: tabs.length, vsync: this, initialIndex: safeActiveIndex);
+
+        _tabController!.addListener(() {
+          if (_tabController != null && !_tabController!.indexIsChanging) {
+            ref.read(activeTabIndexProvider.notifier).state =
+                _tabController!.index;
+          }
         });
-      }
-    }
-  }
-
-  /// Callback function called from the ElementNodeController to trigger a rebuild
-  void requestRebuildCallback() {
-    setState(() {});
-  }
-
-  void _openFile([String? filePath]) async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      final nodeController = ElementNodeController();
-      List<ElementNode> lList =
-          await _arxmlLoader.openFile(nodeController, filePath);
-
-      setState(() {
-        _nodeControllers.add(nodeController);
-        _filePaths.add(filePath ?? "new file");
-        _tabController =
-            TabController(length: _nodeControllers.length, vsync: this);
-        nodeController.init(
-            lList, requestRebuildCallback, (id) => _scrollToNode(id));
-      });
-    } catch (e) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text("Error"),
-            content: Text("Failed to open file: ${e.toString()}"),
-            actions: <Widget>[
-              TextButton(
-                child: const Text("OK"),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _removeFile(int index) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text("Remove File"),
-          content: Text("Are you sure you want to remove ${_filePaths[index]}?"),
-          actions: <Widget>[
-            TextButton(
-              child: const Text("Cancel"),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: const Text("Remove"),
-              onPressed: () {
-                File(_filePaths[index]).delete();
-                _closeFile(index);
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _closeFile(int index) {
-    setState(() {
-      _nodeControllers.removeAt(index);
-      _filePaths.removeAt(index);
-      _tabController =
-          TabController(length: _nodeControllers.length, vsync: this);
-    });
-  }
-
-  void _saveFile() async {
-    if (_tabController == null || _nodeControllers.isEmpty) return;
-    final controller = _nodeControllers[_tabController!.index];
-    final filePath = _filePaths[_tabController!.index];
-    final xmlString = _arxmlLoader.toXmlString(controller.rootNodesList);
-    await File(filePath).writeAsString(xmlString);
-  }
-
-  void _createFile() async {
-    String? outputFile = await FilePicker.platform.saveFile(
-      dialogTitle: 'Please select an output file:',
-      fileName: 'new_file.arxml',
-    );
-
-    if (outputFile != null) {
-      File file = File(outputFile);
-      const String defaultContent = '''
-<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR>
-</AUTOSAR>
-''';
-      await file.writeAsString(defaultContent);
-      _openFile(outputFile);
-    }
-  }
-
-  Future<void> _scrollToNode(int id) async {
-    if (_tabController == null || _nodeControllers.isEmpty) return;
-    final controller = _nodeControllers[_tabController!.index];
-    // Ensure the node is visible before scrolling by expanding its parents.
-    controller.expandUntilNode(id);
-    // Select the node to highlight it.
-    controller.onSelected(id, true);
-
-    // Schedule the scroll to happen after the UI has finished rebuilding.
-    final completer = Completer<void>();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final key = _nodeKeys[id];
-      if (key != null && key.currentContext != null) {
-        Scrollable.ensureVisible(key.currentContext!,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut).whenComplete(() => completer.complete());
+        print('DEBUG: TabController created successfully');
       } else {
-        completer.complete();
+        _tabController = null;
+        print('DEBUG: TabController set to null (no tabs)');
       }
-    });
-    return completer.future;
+    } else if (_tabController != null) {
+      // Just update the index if TabController already exists and has correct length
+      final safeActiveIndex = activeTabIndex.clamp(0, tabs.length - 1);
+      print(
+          'DEBUG: Updating existing TabController index to: $safeActiveIndex');
+      if (_tabController!.index != safeActiveIndex) {
+        _tabController!.animateTo(safeActiveIndex);
+      }
+    }
   }
 
-  void _collapseAll() {
-    if (_tabController == null || _nodeControllers.isEmpty) return;
-    _nodeControllers[_tabController!.index].collapseAll();
-  }
-
-  void _expandAll() {
-    if (_tabController == null || _nodeControllers.isEmpty) return;
-    _nodeControllers[_tabController!.index].expandAll();
+  @override
+  void dispose() {
+    _tabController?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final tabs = ref.watch(fileTabsProvider);
+    final activeTab = ref.watch(activeTabProvider);
+    final notifier = ref.read(fileTabsProvider.notifier);
+    final isLoading = ref.watch(loadingStateProvider);
+    final activeTreeState =
+        activeTab != null ? ref.watch(activeTab.treeStateProvider) : null;
+
+    // Update TabController only when tabs change
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateTabController();
+    });
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("ARXML Explorer"),
+        title: Text(widget.title),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Theme.of(context).colorScheme.primary,
+                Theme.of(context).colorScheme.primaryContainer,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
         actions: [
-          IconButton(icon: const Icon(Icons.file_open), onPressed: _openFile),
+          IconButton(
+              icon: const Icon(Icons.file_open),
+              onPressed: notifier.openNewFile),
           IconButton(
               icon: const Icon(Icons.create_new_folder),
-              onPressed: _createFile),
+              onPressed: notifier.createNewFile),
           IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: _saveFile,
+              icon: const Icon(Icons.save), onPressed: notifier.saveActiveFile),
+          IconButton(
+            icon: const Icon(Icons.file_present),
+            tooltip: 'Select XSD schema for active tab',
+            onPressed: notifier.pickXsdForActiveTab,
           ),
           IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: () {
-                showSearch(context: context, delegate: searchDelegate);
-              }),
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              if (activeTreeState != null) {
+                showSearch(
+                  context: context,
+                  delegate: CustomSearchDelegate(activeTreeState),
+                ).then((nodeId) {
+                  if (nodeId != null && activeTab != null) {
+                    final treeNotifier =
+                        ref.read(activeTab.treeStateProvider.notifier);
+                    treeNotifier.expandUntilNode(nodeId);
+                    final treeState = ref.read(activeTab.treeStateProvider);
+                    final index = treeState.visibleNodes
+                        .indexWhere((n) => n.id == nodeId);
+                    if (index != -1) {
+                      itemScrollController.scrollTo(
+                        index: index,
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  }
+                });
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.unfold_less),
-            onPressed: _collapseAll,
+            onPressed: () {
+              if (activeTab != null) {
+                ref.read(activeTab.treeStateProvider.notifier).collapseAll();
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.unfold_more),
-            onPressed: _expandAll,
-          ),
-          IconButton(
-            icon: const Icon(Icons.schema),
-            onPressed: _loadXsdFile,
+            onPressed: () {
+              if (activeTab != null) {
+                ref.read(activeTab.treeStateProvider.notifier).expandAll();
+              }
+            },
           ),
         ],
-        bottom: _nodeControllers.isNotEmpty
-            ? TabBar(
-                controller: _tabController,
-                tabs: _filePaths
-                    .map((path) => Tab(
+        bottom: (tabs.isEmpty || _tabController == null)
+            ? null
+            : TabBar(
+                controller: _tabController!,
+                isScrollable: true,
+                indicator: UnderlineTabIndicator(
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.secondary,
+                    width: 3,
+                  ),
+                ),
+                labelColor: Colors.white,
+                unselectedLabelColor: const Color(0xCCFFFFFF),
+                tabs: tabs
+                    .map((tab) => Tab(
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(path),
+                              Text(tab.path.split(Platform.pathSeparator).last),
+                              if (tab.xsdPath != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 6.0),
+                                  child: Tooltip(
+                                    message: 'Schema: ${tab.xsdPath}',
+                                    child: const Icon(Icons.schema, size: 16, color: Colors.white),
+                                  ),
+                                ),
                               IconButton(
-                                icon: const Icon(Icons.close),
+                                icon: const Icon(Icons.close, size: 16, color: Colors.white70),
                                 onPressed: () =>
-                                    _closeFile(_filePaths.indexOf(path)),
+                                    notifier.closeFile(tabs.indexOf(tab)),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () =>
-                                    _removeFile(_filePaths.indexOf(path)),
-                              )
                             ],
                           ),
                         ))
                     .toList(),
-              )
-            : null,
+              ),
       ),
-      body: _isLoading
+      body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _nodeControllers.isNotEmpty
+          : activeTab != null && _tabController != null
               ? TabBarView(
-                  controller: _tabController,
-                  children: _nodeControllers.map((controller) {
-                    return ListView.builder(
-                      controller: scrollController,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      itemCount: controller.itemCount,
-                      itemBuilder: (context, index) {
-                        final node = controller.getNode(index);
-                        if (node == null) return Container();
-                        final key = GlobalKey();
-                        _nodeKeys[node.id] = key;
-                        return ElementNodeWidget(node, _xsdParser, key: key);
-                      },
-                    );
+                  controller: _tabController!,
+                  children: tabs.map((tab) {
+                    return Consumer(builder: (context, ref, child) {
+                      final treeState = ref.watch(tab.treeStateProvider);
+                      return ScrollablePositionedList.builder(
+                        itemScrollController: itemScrollController,
+                        itemPositionsListener: itemPositionsListener,
+                        itemCount: treeState.visibleNodes.length,
+                        itemBuilder: (context, index) {
+                          final node = treeState.visibleNodes[index];
+                          return ElementNodeWidget(
+                            node: node,
+                            xsdParser: tab.xsdParser,
+                            key: ValueKey(node.id),
+                            treeStateProvider: tab.treeStateProvider,
+                          );
+                        },
+                      );
+                    });
                   }).toList(),
                 )
               : const Center(
                   child: Text("Open a file to begin"),
                 ),
-      key: widget.scaffoldKey,
     );
   }
 }

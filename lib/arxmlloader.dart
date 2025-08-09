@@ -4,13 +4,10 @@ import 'dart:developer' as developer;
 import 'elementnode.dart';
 import 'package:xml/xml.dart';
 
-import 'elementnodecontroller.dart';
-
 class ARXMLFileLoader {
   const ARXMLFileLoader();
 
-  Future<List<ElementNode>> openFile(ElementNodeController controller,
-      [String? filePath]) async {
+  Future<List<ElementNode>> openFile([String? filePath]) async {
     List<ElementNode> retval = [];
     developer.log("Opening a file");
 
@@ -26,7 +23,7 @@ class ARXMLFileLoader {
 
       final fileContent = file.readAsStringSync();
 
-      retval = parseXmlContent(fileContent, controller);
+      retval = parseXmlContent(fileContent);
     } else {
       developer.log("ERROR - User cancelled the file picker");
     }
@@ -36,77 +33,54 @@ class ARXMLFileLoader {
     return retval;
   }
 
-  List<ElementNode> parseXmlContent(
-      String input, ElementNodeController controller) {
+  List<ElementNode> parseXmlContent(String input) {
     List<ElementNode> retval = [];
 
     final document = XmlDocument.parse(input);
 
     for (var element in document.childElements) {
-      retval.addAll(_parseXmlElement(element, 0, controller));
+      retval.addAll(_parseXmlElement(element, 0));
     }
 
     return retval;
   }
 
-  List<ElementNode> _parseXmlElement(
-      XmlElement element, int depth, ElementNodeController controller) {
-    List<ElementNode> retval = [];
+  List<ElementNode> _parseXmlElement(XmlElement element, int depth) {
+    List<ElementNode> rootNodes = [];
+    var stack = <(XmlElement, List<ElementNode>, int)>[(element, rootNodes, depth)];
 
-    // Increment the depth each time we recurse one level deeper
-    depth++;
-
-    // Properties for the new ElementNode
-    String elementText = "default value";
-    List<ElementNode> children = [];
-
-    // If node is an XmlElement, then look for children
-    if (element.nodeType == XmlNodeType.ELEMENT) {
-      // If there are children, then recurse
-      if (element.children.length > 1) {
-        List<ElementNode> childrenElements = [];
-        for (var child in element.childElements) {
-          childrenElements.addAll(_parseXmlElement(child, depth, controller));
-        }
-        elementText = element.name.toString();
-        children = childrenElements;
-      } else if (element.children.length == 1) {
-        /* Handle the case where the only children is a text node */
-        if (element.children.first is XmlText) {
-          List<ElementNode> listChildText = [];
-          listChildText.add(ElementNode(
-              elementText: element.children.first.text,
-              children: const [],
-              depth: depth + 1,
-              nodeController: controller,
-              onCollapseStateChange: controller.onCollapseStateChanged,
-              onSelected: controller.onSelected));
-
-          elementText = element.name.toString();
-          children = listChildText;
-          depth = depth;
-        }
-      } else {
-        // If there are no children, return a TreeNode
-        elementText = element.name.toString();
-        children = const [];
-        depth = depth;
-      }
+    while (stack.isNotEmpty) {
+      var (currentElement, parentChildren, currentDepth) = stack.removeLast();
+      
+      String elementText = currentElement.name.toString();
+      List<ElementNode> newChildren = [];
 
       ElementNode newNode = ElementNode(
           elementText: elementText,
-          depth: depth,
-          children: children,
-          nodeController: controller,
-          onCollapseStateChange: controller.onCollapseStateChanged,
-          onSelected: controller.onSelected);
+          depth: currentDepth,
+          children: newChildren);
+
       if (elementText == "DEFINITION-REF" || elementText == "SHORT-NAME") {
         newNode.isCollapsed = true;
       }
-      retval.add(newNode);
-    }
+      
+      parentChildren.add(newNode);
 
-    return retval;
+      if (currentElement.children.length == 1 && currentElement.children.first is XmlText) {
+        final textNode = currentElement.children.first as XmlText;
+        final textChild = ElementNode(
+            elementText: textNode.text,
+            children: const [],
+            depth: currentDepth + 1);
+        newChildren.add(textChild);
+      } else {
+        // Add children to the stack in reverse order to process them correctly
+        for (var child in currentElement.childElements.toList().reversed) {
+          stack.add((child, newChildren, currentDepth + 1));
+        }
+      }
+    }
+    return rootNodes;
   }
 
   String toXmlString(List<ElementNode> nodes) {

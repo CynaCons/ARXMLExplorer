@@ -40,12 +40,6 @@ class _DepthPainter extends CustomPainter {
       final dx = i * indentWidth;
       canvas.drawLine(Offset(dx, 0), Offset(dx, size.height), paint);
     }
-
-    final dx = (depth - 1) * indentWidth;
-    canvas.drawLine(Offset(dx, size.height / 2), Offset(dx + indentWidth, size.height / 2), paint);
-    if (isLastChild) {
-      canvas.drawLine(Offset(dx, size.height / 2), Offset(dx, size.height), paint);
-    }
   }
 
   @override

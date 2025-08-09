@@ -1,9 +1,6 @@
 import 'dart:developer' as developer;
 
 import 'package:flutter/cupertino.dart';
-import 'package:arxml_explorer/elementnodecontroller.dart';
-
-/// TODO The function getChild is misleading. IF given a requestedIndex == 0 it returns the node itself and not a child
 
 const gNewImplementation = false;
 
@@ -12,51 +9,19 @@ class ElementNode {
   List<ElementNode> children;
   int depth;
   int? _lengthCache;
-  int id;
+  int id = 0;
   bool isCollapsed = false;
   bool isSelected = false;
   bool isVisible = true;
   String shortname = "";
   String definitionRef = "";
-  void Function(int, bool)? onCollapseStateChange;
-  void Function(int, bool)? onSelected;
-  ElementNodeController nodeController;
   ElementNode? parent;
 
-  ElementNode(
-      {this.elementText = "",
-      this.children = const [],
-      this.depth = 1,
-      this.onCollapseStateChange,
-      this.onSelected,
-      this.id = 0,
-      required this.nodeController});
-
-  ElementNode getChild(int requestedIndex, int currentIndex) {
-    ElementNode retval = this;
-
-    if (requestedIndex == currentIndex) {
-      // Do nothing - current node will be returned
-    } else if (requestedIndex > currentIndex) {
-      // Increment the index, we're going deeper in the node
-      for (var child in children) {
-        // Check if the requested node is part of the child tree or not
-        if (currentIndex + child.length >= requestedIndex) {
-          currentIndex++;
-          retval = child.getChild(requestedIndex, currentIndex);
-          break;
-        } else {
-          // Skip the children and increment the index by the skipped child length
-          currentIndex += child.length;
-        }
-      }
-    } else {
-      developer.log(
-          "Impossible case detected with requestedIndex $requestedIndex and currentIndex $currentIndex");
-    }
-
-    return retval;
-  }
+  ElementNode({
+    this.elementText = "",
+    this.children = const [],
+    this.depth = 1,
+  });
 
   /// Getter for length of the children of this node
   int get length {
@@ -79,11 +44,7 @@ class ElementNode {
 
     if (isCollapsed == false) {
       for (var child in children) {
-        if (isCollapsed == true) {
-          retval += 1;
-        } else {
-          retval += child.visibleLength;
-        }
+        retval += child.visibleLength;
       }
     }
 

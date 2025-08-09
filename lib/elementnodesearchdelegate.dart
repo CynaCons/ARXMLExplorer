@@ -1,15 +1,14 @@
+import 'package:arxml_explorer/arxml_tree_view_state.dart';
 import 'package:flutter/material.dart';
-import 'package:arxml_explorer/elementnodecontroller.dart';
 import 'package:arxml_explorer/elementnode.dart';
 
-
-class CustomSearchDelegate extends SearchDelegate<String> {
-  final GlobalKey<ScaffoldState> scaffoldKey;
-  final ElementNodeController nodeController;
+class CustomSearchDelegate extends SearchDelegate<int?> {
+  final ArxmlTreeState treeState;
   final bool isCaseSensitive;
   final bool isWholeWord;
 
-  CustomSearchDelegate(this.scaffoldKey, this.nodeController, {this.isCaseSensitive = false, this.isWholeWord = false});
+  CustomSearchDelegate(this.treeState,
+      {this.isCaseSensitive = false, this.isWholeWord = false});
 
   bool _matchesQuery(String? text, String query) {
     if (text == null || text.isEmpty) return false;
@@ -18,24 +17,36 @@ class CustomSearchDelegate extends SearchDelegate<String> {
     String searchQuery = isCaseSensitive ? query : query.toLowerCase();
 
     if (isWholeWord) {
-      return RegExp(r'\b' + RegExp.escape(searchQuery) + r'\b').hasMatch(searchText);
+      return RegExp(r'\b' + RegExp.escape(searchQuery) + r'\b')
+          .hasMatch(searchText);
     } else {
       return searchText.contains(searchQuery);
     }
   }
 
-  List<ElementNode> _performSearch(String query) {
+  List<ElementNode> performSearch(String query) {
     if (query.isEmpty) {
       return [];
     }
 
-    return nodeController.flatMapValues.where((node) {
-      final combinedText = '${node.elementText} ${node.shortname} ${node.definitionRef}'.trim();
-      return _matchesQuery(combinedText, query) || 
-             _matchesQuery(node.elementText, query) ||
-             _matchesQuery(node.shortname, query) ||
-             _matchesQuery(node.definitionRef, query);
-    }).toList();
+    final results = <ElementNode>{};
+
+    for (final node in treeState.flatMap.values) {
+      // Case 1: The node's own text matches. Add it.
+      if (_matchesQuery(node.elementText, query) ||
+          _matchesQuery(node.shortname, query) ||
+          _matchesQuery(node.definitionRef, query)) {
+        results.add(node);
+      }
+
+      // Case 2: A direct child is a text node and it matches. Add the current node.
+      if (node.children.length == 1 && node.children.first.children.isEmpty) {
+        if (_matchesQuery(node.children.first.elementText, query)) {
+          results.add(node);
+        }
+      }
+    }
+    return results.toList();
   }
 
   @override
@@ -55,14 +66,14 @@ class CustomSearchDelegate extends SearchDelegate<String> {
     return IconButton(
       icon: const Icon(Icons.arrow_back),
       onPressed: () {
-        close(context, '');
+        close(context, null);
       },
     );
   }
 
   @override
   Widget buildResults(BuildContext context) {
-    final List<ElementNode> searchResults = _performSearch(query);
+    final List<ElementNode> searchResults = performSearch(query);
 
     return ListView.builder(
       itemCount: searchResults.length,
@@ -72,10 +83,7 @@ class CustomSearchDelegate extends SearchDelegate<String> {
           title: Text(node.elementText),
           subtitle: Text('${node.shortname} ${node.definitionRef}'.trim()),
           onTap: () {
-            // When a result is tapped, expand its parents and scroll to it
-            nodeController.expandUntilNode(node.id);
-            nodeController.onScrollToNode(node.id);
-            close(context, node.elementText);
+            close(context, node.id);
           },
         );
       },
@@ -84,7 +92,7 @@ class CustomSearchDelegate extends SearchDelegate<String> {
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    final List<ElementNode> suggestionList = _performSearch(query);
+    final List<ElementNode> suggestionList = performSearch(query);
 
     return ListView.builder(
       itemCount: suggestionList.length,
@@ -94,10 +102,7 @@ class CustomSearchDelegate extends SearchDelegate<String> {
           title: Text(node.elementText),
           subtitle: Text('${node.shortname} ${node.definitionRef}'.trim()),
           onTap: () {
-            // When a suggestion is tapped, expand its parents and scroll to it
-            nodeController.expandUntilNode(node.id);
-            nodeController.onScrollToNode(node.id);
-            close(context, node.elementText);
+            close(context, node.id);
           },
         );
       },
