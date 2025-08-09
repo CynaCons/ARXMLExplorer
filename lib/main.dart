@@ -57,6 +57,49 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     }
   }
 
+  Future<void> toggleDiagnostics() async {
+    final next = !_ref.read(diagnosticsProvider);
+    _ref.read(diagnosticsProvider.notifier).state = next;
+    await _rebuildParsersWithVerbose(next);
+  }
+
+  Future<void> _rebuildParsersWithVerbose(bool verbose) async {
+    // Rebuild session parser
+    if (_currentXsdPath != null) {
+      try {
+        final content = await File(_currentXsdPath!).readAsString();
+        _currentXsdParser = XsdParser(content, verbose: verbose);
+      } catch (e) {
+        print('Warning: Could not reload session XSD: $e');
+      }
+    }
+
+    // Rebuild per-tab parsers
+    final updated = <FileTabState>[];
+    for (final tab in state) {
+      XsdParser? parser = tab.xsdParser;
+      if (tab.xsdPath != null) {
+        try {
+          final content = await File(tab.xsdPath!).readAsString();
+          parser = XsdParser(content, verbose: verbose);
+        } catch (e) {
+          print('Warning: Could not reload XSD for tab ${tab.path}: $e');
+        }
+      } else {
+        // Use current session parser
+        parser = _currentXsdParser;
+      }
+      updated.add(FileTabState(
+        path: tab.path,
+        treeStateProvider: tab.treeStateProvider,
+        xsdParser: parser,
+        xsdPath: tab.xsdPath,
+      ));
+    }
+    state = updated;
+  }
+
+  // Load the XSD schema for the active tab from file picker
   Future<void> pickXsdForActiveTab() async {
     final activeIndex = _ref.read(activeTabIndexProvider);
     if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) return;
@@ -380,7 +423,8 @@ class _MyHomePageState extends ConsumerState<MyHomePage>
                 ? 'Verbose XSD diagnostics: ON'
                 : 'Verbose XSD diagnostics: OFF',
             onPressed: () {
-              ref.read(diagnosticsProvider.notifier).state = !diagnosticsOn;
+              // toggle provider and rebuild parsers with verbose
+              ref.read(fileTabsProvider.notifier).toggleDiagnostics();
             },
           ),
           IconButton(
@@ -435,13 +479,24 @@ class _MyHomePageState extends ConsumerState<MyHomePage>
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white70,
                 indicatorColor: Colors.white,
+                indicatorSize: TabBarIndicatorSize.label,
+                indicator: const UnderlineTabIndicator(
+                  borderSide: BorderSide(width: 3.0, color: Colors.white),
+                ),
                 tabs: tabs
                     .map((tab) => Tab(
                           child: Row(
                             children: [
                               Text(
                                 tab.path.split(Platform.pathSeparator).last,
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: _tabController != null &&
+                                          tabs.indexOf(tab) ==
+                                              _tabController!.index
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
                               ),
                               if (tab.xsdPath != null)
                                 Padding(
