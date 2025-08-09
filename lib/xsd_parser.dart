@@ -23,16 +23,30 @@ class XsdParser {
   List<XmlElement>? _groupDefinitions;
   List<XmlElement>? _complexTypeDefinitions;
 
+  // Verbose resolution trace buffer (per call)
+  List<String> _traceBuffer = const [];
+
   XsdParser(String xsdContent,
       {this.verbose = false,
-      this.particleDepthLimit = 3,
-      this.groupDepthLimit = 2})
+      this.particleDepthLimit = 4,
+      this.groupDepthLimit = 3})
       : document = XmlDocument.parse(xsdContent);
 
-  List<String> getValidChildElements(String parentElementName) {
-    // Check cache first
-    if (_childElementsCache.containsKey(parentElementName)) {
-      return _childElementsCache[parentElementName]!;
+  // Retrieve the most recent verbose trace (if verbose=true when called)
+  List<String> getLastResolutionTrace() => List.unmodifiable(_traceBuffer);
+
+  List<String> getValidChildElements(String parentElementName,
+      {String? contextElementName}) {
+    // Reset trace for this invocation
+    _traceBuffer = [];
+
+    // Check cache first (include context in key)
+    final cacheKey = contextElementName == null
+        ? parentElementName
+        : '$parentElementName|ctx:$contextElementName';
+    if (_childElementsCache.containsKey(cacheKey)) {
+      _v('Cache hit for "$cacheKey"');
+      return _childElementsCache[cacheKey]!;
     }
 
     final List<String> validChildElements = [];
@@ -52,7 +66,8 @@ class XsdParser {
     _ensureIndexes();
 
     // Find element or group with timeout protection
-    var parentElementDef = _findElementDef(parentElementName);
+    var parentElementDef =
+        _findElementDefWithContext(parentElementName, contextElementName);
 
     if (parentElementDef == null) {
       parentElementDef = _findGroupDef(parentElementName);
@@ -62,20 +77,20 @@ class XsdParser {
       try {
         // Use a visited set to prevent infinite recursion
         final visited = <String>{};
-        _v('Extracting children for "$parentElementName"');
+        _v('Extracting children for "$cacheKey"');
         _extractChildElementsWithTimeoutAndVisited(
             parentElementDef, validChildElements, visited);
-        _v('Collected ${validChildElements.toSet().length} candidates for "$parentElementName"');
+        _v('Collected ${validChildElements.toSet().length} candidates for "$cacheKey"');
       } catch (e) {
         if (verbose) {
-          print('XSD: Could not extract children for $parentElementName: $e');
+          print('XSD: Could not extract children for $cacheKey: $e');
         }
       }
     }
 
     // Cache the result
     final result = validChildElements.toSet().toList();
-    _childElementsCache[parentElementName] = result;
+    _childElementsCache[cacheKey] = result;
     return result;
   }
 
@@ -143,6 +158,57 @@ class XsdParser {
     if (subs != null && subs.isNotEmpty) {
       target.addAll(subs);
     }
+  }
+
+  String _elementCacheKey(String name, {String? context}) =>
+      context == null ? name : '$name|ctx:$context';
+
+  XmlElement? _findElementDefWithContext(
+      String name, String? contextElementName) {
+    // First try context-aware cache
+    final ck = _elementCacheKey(name, context: contextElementName);
+    if (_elementDefsCache.containsKey(ck)) {
+      final cached = _elementDefsCache[ck];
+      return cached!.name.local == 'dummy' ? null : cached;
+    }
+
+    // If no context provided, use the fast path
+    if (contextElementName == null) {
+      return _findElementDef(name);
+    }
+
+    _ensureIndexes();
+    final key = _stripPrefix(name);
+
+    // Scan all xs:element/xsd:element with this name and try to find the one whose
+    // nearest ancestor xs:element has a matching name (context)
+    final candidates = [
+      ...document.findAllElements('xs:element'),
+      ...document.findAllElements('xsd:element')
+    ].where((el) => el.getAttribute('name') == key);
+
+    for (final el in candidates) {
+      final nearestAncestorElement = el.ancestors
+          .whereType<XmlElement>()
+          .firstWhere(
+              (a) =>
+                  (a.name.local == 'element' ||
+                      a.name.qualified == 'xs:element' ||
+                      a.name.qualified == 'xsd:element') &&
+                  a.getAttribute('name') != null,
+              orElse: () => XmlElement(XmlName('dummy')));
+      final ancestorName = nearestAncestorElement.getAttribute('name');
+      if (ancestorName != null &&
+          _stripPrefix(ancestorName) == _stripPrefix(contextElementName)) {
+        _elementDefsCache[ck] = el;
+        return el;
+      }
+    }
+
+    // Fallback to name-only lookup
+    final fallback = _findElementDef(name);
+    _elementDefsCache[ck] = fallback ?? XmlElement(XmlName('dummy'));
+    return fallback;
   }
 
   XmlElement? _findElementDef(String name) {
@@ -786,6 +852,17 @@ class XsdParser {
 
   // Verbose logging helper
   void _v(String message) {
-    if (verbose) print('XSD: $message');
+    if (verbose) {
+      // Keep a short rolling trace (avoid unbounded growth)
+      if (_traceBuffer.length > 5000) {
+        _traceBuffer = _traceBuffer.sublist(_traceBuffer.length - 4000);
+      }
+      _traceBuffer = [..._traceBuffer, message];
+      print('XSD: $message');
+    }
   }
+}
+
+extension FirstOrNull<E> on Iterable<E> {
+  E? get firstOrNull => isEmpty ? null : first;
 }

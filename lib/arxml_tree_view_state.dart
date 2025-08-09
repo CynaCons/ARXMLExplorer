@@ -188,6 +188,45 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       );
     }
   }
+
+  // New: collapse/expand all descendants of a node (keep the node itself as-is)
+  void collapseChildrenOf(int nodeId) {
+    final node = state.flatMap[nodeId];
+    if (node == null) return;
+
+    void visit(ElementNode n) {
+      for (final c in n.children) {
+        c.isCollapsed = true;
+        visit(c);
+      }
+    }
+
+    visit(node);
+    state = ArxmlTreeState(
+      rootNodes: state.rootNodes,
+      flatMap: state.flatMap,
+      visibleNodes: UnmodifiableListView(_getVisibleNodes(state.rootNodes)),
+    );
+  }
+
+  void expandChildrenOf(int nodeId) {
+    final node = state.flatMap[nodeId];
+    if (node == null) return;
+
+    void visit(ElementNode n) {
+      for (final c in n.children) {
+        c.isCollapsed = false;
+        visit(c);
+      }
+    }
+
+    visit(node);
+    state = ArxmlTreeState(
+      rootNodes: state.rootNodes,
+      flatMap: state.flatMap,
+      visibleNodes: UnmodifiableListView(_getVisibleNodes(state.rootNodes)),
+    );
+  }
 }
 
 class FileTabState {
@@ -196,11 +235,30 @@ class FileTabState {
       treeStateProvider;
   final XsdParser? xsdParser;
   final String? xsdPath;
+  final bool isDirty;
 
   FileTabState({
     required this.path,
     required this.treeStateProvider,
     this.xsdParser,
     this.xsdPath,
+    this.isDirty = false,
   });
+
+  FileTabState copyWith({
+    String? path,
+    AutoDisposeStateNotifierProvider<ArxmlTreeStateNotifier, ArxmlTreeState>?
+        treeStateProvider,
+    XsdParser? xsdParser,
+    String? xsdPath,
+    bool? isDirty,
+  }) {
+    return FileTabState(
+      path: path ?? this.path,
+      treeStateProvider: treeStateProvider ?? this.treeStateProvider,
+      xsdParser: xsdParser ?? this.xsdParser,
+      xsdPath: xsdPath ?? this.xsdPath,
+      isDirty: isDirty ?? this.isDirty,
+    );
+  }
 }

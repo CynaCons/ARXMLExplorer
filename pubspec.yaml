@@ -45,6 +45,7 @@ dependencies:
   plugin_platform_interface: ^2.1.8
   flutter_riverpod: ^2.6.1
   scrollable_positioned_list: ^0.3.8
+  path: ^1.8.3
 
 dev_dependencies:
   flutter_test:

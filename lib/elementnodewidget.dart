@@ -4,6 +4,10 @@ import 'package:arxml_explorer/depth_indicator.dart';
 import 'package:arxml_explorer/xsd_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:arxml_explorer/app_providers.dart';
+import 'package:arxml_explorer/main.dart'
+    show validationSchedulerProvider, fileTabsProvider; // access scheduler & tabs
+import 'package:arxml_explorer/workspace_indexer.dart';
 
 class ElementNodeWidget extends ConsumerStatefulWidget {
   final ElementNode node;
@@ -24,6 +28,12 @@ class ElementNodeWidget extends ConsumerStatefulWidget {
 
 class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
   bool _isHovered = false;
+
+  // Helper to run live validation if enabled (debounced)
+  Future<void> _maybeRunLiveValidation() async {
+    if (!ref.read(liveValidationProvider)) return;
+    ref.read(validationSchedulerProvider.notifier).schedule();
+  }
 
   void _showContextMenu(BuildContext context, Offset tapPosition) {
     final notifier = ref.read(widget.treeStateProvider.notifier);
@@ -47,6 +57,8 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
 
     items.addAll(const [
       PopupMenuItem<String>(value: 'add', child: Text('Add Child')),
+      PopupMenuItem<String>(value: 'collapse_children', child: Text('Collapse children')),
+      PopupMenuItem<String>(value: 'expand_children', child: Text('Expand children')),
       PopupMenuItem<String>(value: 'delete', child: Text('Delete Node')),
     ]);
 
@@ -82,8 +94,21 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
       case 'add':
         _showAddChildDialog(widget.node);
         break;
+      case 'collapse_children':
+        notifier.collapseChildrenOf(widget.node.id);
+        ref
+            .read(fileTabsProvider.notifier)
+            .markDirtyForTreeProvider(widget.treeStateProvider);
+        break;
+      case 'expand_children':
+        notifier.expandChildrenOf(widget.node.id);
+        break;
       case 'delete':
         notifier.deleteNode(widget.node.id);
+        ref
+            .read(fileTabsProvider.notifier)
+            .markDirtyForTreeProvider(widget.treeStateProvider);
+        _maybeRunLiveValidation();
         break;
     }
   }
@@ -114,7 +139,11 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                 ref
                     .read(widget.treeStateProvider.notifier)
                     .editNodeValue(node.id, controller.text);
+                ref
+                    .read(fileTabsProvider.notifier)
+                    .markDirtyForTreeProvider(widget.treeStateProvider);
                 Navigator.of(context).pop();
+                _maybeRunLiveValidation();
               },
             ),
           ],
@@ -149,7 +178,11 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                 ref
                     .read(widget.treeStateProvider.notifier)
                     .renameNodeTag(node.id, controller.text.trim());
+                ref
+                    .read(fileTabsProvider.notifier)
+                    .markDirtyForTreeProvider(widget.treeStateProvider);
                 Navigator.of(context).pop();
+                _maybeRunLiveValidation();
               },
             ),
           ],
@@ -160,9 +193,15 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
 
   void _showAddChildDialog(ElementNode node) {
     String? selectedElement;
-    final validChildren =
-        widget.xsdParser?.getValidChildElements(node.elementText) ?? [];
+    final validChildren = widget.xsdParser?.getValidChildElements(
+            node.elementText,
+            contextElementName: node.parent?.elementText) ??
+        [];
     final customController = TextEditingController();
+    String? errorText;
+
+    // Remember last picked child per parent tag (session-only)
+    selectedElement = _lastPickedByParent[node.elementText];
 
     showDialog(
       context: context,
@@ -172,6 +211,7 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
             final canAdd =
                 (selectedElement != null && selectedElement!.isNotEmpty) ||
                     customController.text.trim().isNotEmpty;
+            errorText = canAdd ? null : 'Pick a valid element or enter a name';
             return AlertDialog(
               title: const Text('Add Child Node'),
               content: Column(
@@ -202,9 +242,10 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: customController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Custom element name (optional)',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
+                      errorText: errorText,
                     ),
                     onChanged: (_) => setState(() {}),
                   ),
@@ -224,9 +265,14 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                                   ? selectedElement!
                                   : customController.text.trim();
                           if (name.isNotEmpty) {
+                            _lastPickedByParent[node.elementText] = name;
                             ref
                                 .read(widget.treeStateProvider.notifier)
                                 .addChildNode(node.id, name);
+                            ref
+                                .read(fileTabsProvider.notifier)
+                                .markDirtyForTreeProvider(widget.treeStateProvider);
+                            _maybeRunLiveValidation();
                           }
                           Navigator.of(context).pop();
                         }
@@ -240,6 +286,9 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
     );
   }
 
+  // Session memory for last picked child per parent tag
+  static final Map<String, String> _lastPickedByParent = {};
+
   @override
   Widget build(BuildContext context) {
     final treeState = ref.watch(widget.treeStateProvider);
@@ -248,9 +297,50 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
 
     final highlightColor = colorScheme.primaryContainer; // context menu focus
     final hoverColor = colorScheme.secondaryContainer.withOpacity(0.18);
-    final bgColor = isHighlighted
-        ? highlightColor
-        : (_isHovered ? hoverColor : null);
+    final bgColor =
+        isHighlighted ? highlightColor : (_isHovered ? hoverColor : null);
+
+    // Build a title that shows inline SHORT-NAME next to container nodes
+    String titleText = widget.node.elementText;
+    final hasShortNameChild = widget.node.children.isNotEmpty &&
+        widget.node.children.first.elementText == 'SHORT-NAME' &&
+        widget.node.children.first.children.isNotEmpty;
+    if (hasShortNameChild) {
+      final short = widget.node.children.first.children.first.elementText;
+      titleText = '$titleText  •  $short';
+    }
+
+    // Reference indicator: show for DEFINITION-REF when the target exists in workspace indexer
+    bool showRefIndicator = false;
+    void Function()? goToDef;
+    if (widget.node.elementText == 'DEFINITION-REF' &&
+        widget.node.children.isNotEmpty) {
+      final target = widget.node.children.first.elementText.trim();
+      final idx = ref.watch(workspaceIndexProvider);
+      showRefIndicator = target.isNotEmpty && idx.hasTarget(target);
+      if (showRefIndicator) {
+        goToDef = () => ref
+            .read(workspaceIndexProvider.notifier)
+            .goToDefinition(target, ref);
+      }
+    }
+
+    // Validation issue badge placeholder (reads from provider; actual mapping of node->issue later)
+    final issues = ref.watch(validationIssuesProvider);
+    final hasIssue = issues.any((i) => i.path.contains(widget.node.elementText));
+
+    // Prepare tooltip for ref indicator
+    String? refTooltip;
+    if (widget.node.elementText == 'DEFINITION-REF' &&
+        widget.node.children.isNotEmpty) {
+      final target = widget.node.children.first.elementText.trim();
+      final idx = ref.watch(workspaceIndexProvider);
+      if (idx.hasTarget(target)) {
+        refTooltip = 'Go to definition — ' + (idx.targets[target]?.filePath ?? '');
+      } else {
+        refTooltip = 'Reference target not found in workspace';
+      }
+    }
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -261,6 +351,8 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
         color: bgColor,
         child: GestureDetector(
           onSecondaryTapDown: (details) =>
+              _showContextMenu(context, details.globalPosition),
+          onLongPressStart: (details) =>
               _showContextMenu(context, details.globalPosition),
           child: ListTile(
             tileColor: Colors.transparent,
@@ -287,8 +379,28 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                   const SizedBox(width: 40),
               ],
             ),
-            title: Text(
-                "${widget.node.elementText} ${widget.node.shortname} ${widget.node.definitionRef}".trim()),
+            title: Text(titleText.trim()),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (hasIssue)
+                  const Tooltip(
+                    message: 'Validation issue',
+                    child: Icon(Icons.error_outline, color: Colors.orange),
+                  ),
+                if (refTooltip != null)
+                  Tooltip(
+                    message: refTooltip,
+                    child: IconButton(
+                      icon: Icon(
+                        showRefIndicator ? Icons.link : Icons.link_off,
+                        color: showRefIndicator ? Colors.green : Colors.grey,
+                      ),
+                      onPressed: showRefIndicator ? goToDef : null,
+                    ),
+                  ),
+              ],
+            ),
             onTap: () {
               // Handle selection state via provider if needed
             },

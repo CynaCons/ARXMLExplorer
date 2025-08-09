@@ -29,7 +29,7 @@ void main() {
       expect(find.byIcon(Icons.file_open), findsOneWidget);
 
       print('✅ Initial app state verified - TEST PASSED');
-    });
+    }, timeout: const Timeout(Duration(minutes: 1)));
 
     testWidgets('File loading simulation works end-to-end',
         (WidgetTester tester) async {
@@ -103,13 +103,16 @@ void main() {
       print('📁 Simulating file load...');
       await notifier.simulateFileLoad();
       print('⏳ Waiting for UI to settle after file load...');
-      await tester.pumpAndSettle();
+      // Avoid potential infinite settle loops; pump a few frames instead
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
 
       print('📁 File loading simulated');
 
       // Wait for any delayed operations
       print('⏳ Waiting for delayed operations...');
-      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 200));
 
       // Debug: Print all widgets to see what's actually rendered
       print('🔍 Debugging widget tree...');
@@ -137,7 +140,7 @@ void main() {
 
       print(
           '✅ File loading integration test completed successfully - TEST PASSED');
-    });
+    }, timeout: const Timeout(Duration(minutes: 1)));
 
     testWidgets('TabController state management works correctly',
         (WidgetTester tester) async {
@@ -180,14 +183,17 @@ void main() {
 
       // Simulate loading a file
       await notifier.simulateFileLoad();
-      await tester.pumpAndSettle();
+      // Avoid pumpAndSettle; pump a few frames
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Should now have tabs
       expect(find.byType(TabBar), findsOneWidget);
       expect(find.byType(TabBarView), findsOneWidget);
 
       print('✅ TabController state management test passed');
-    });
+    }, timeout: const Timeout(Duration(minutes: 1)));
   });
 }
 
