@@ -3,6 +3,8 @@ import 'package:xml/xml.dart';
 class XsdParser {
   final XmlDocument document;
   final bool verbose;
+  final int particleDepthLimit;
+  final int groupDepthLimit;
 
   // Cache to avoid repeated expensive lookups
   final Map<String, List<String>> _childElementsCache = {};
@@ -14,13 +16,15 @@ class XsdParser {
   Map<String, XmlElement>? _elementsByName;
   Map<String, XmlElement>? _groupsByName;
   Map<String, XmlElement>? _typesByName;
+  Map<String, List<String>>? _subsByHeadName;
 
   // Lazy-loaded collections
   List<XmlElement>? _elementDefinitions;
   List<XmlElement>? _groupDefinitions;
   List<XmlElement>? _complexTypeDefinitions;
 
-  XsdParser(String xsdContent, {this.verbose = false})
+  XsdParser(String xsdContent,
+      {this.verbose = false, this.particleDepthLimit = 3, this.groupDepthLimit = 2})
       : document = XmlDocument.parse(xsdContent);
 
   List<String> getValidChildElements(String parentElementName) {
@@ -59,7 +63,6 @@ class XsdParser {
         _extractChildElementsWithTimeoutAndVisited(
             parentElementDef, validChildElements, visited);
       } catch (e) {
-        // If extraction takes too long or fails, return empty list
         if (verbose) {
           print('XSD: Could not extract children for $parentElementName: $e');
         }
@@ -110,10 +113,32 @@ class XsdParser {
         }
       }
     }
+    if (_subsByHeadName == null) {
+      _subsByHeadName = {};
+      for (final el in [
+        ...document.findAllElements('xs:element'),
+        ...document.findAllElements('xsd:element')
+      ]) {
+        final sub = el.getAttribute('substitutionGroup');
+        final name = el.getAttribute('name');
+        if (sub != null && name != null) {
+          final head = _stripPrefix(sub);
+          final list = _subsByHeadName!.putIfAbsent(head, () => <String>[]);
+          list.add(name);
+        }
+      }
+    }
   }
 
-  String _stripPrefix(String name) =>
-      name.contains(':') ? name.split(':').last : name;
+  String _stripPrefix(String name) => name.contains(':') ? name.split(':').last : name;
+
+  void _addNameWithSubstitutions(List<String> target, String name) {
+    target.add(name);
+    final subs = _subsByHeadName?[name];
+    if (subs != null && subs.isNotEmpty) {
+      target.addAll(subs);
+    }
+  }
 
   XmlElement? _findElementDef(String name) {
     if (_elementDefsCache.containsKey(name)) {
@@ -129,7 +154,6 @@ class XsdParser {
       return found;
     }
 
-    // Fallback linear search with a reasonable limit to avoid infinite loops
     int searchCount = 0;
     const maxSearches = 1000;
 
@@ -159,7 +183,6 @@ class XsdParser {
       return found;
     }
 
-    // Fallback linear search with a reasonable limit
     int searchCount = 0;
     const maxSearches = 1000;
 
@@ -194,7 +217,6 @@ class XsdParser {
       ...document.findAllElements('xsd:complexType')
     ];
 
-    // Fallback linear search with a reasonable limit
     int searchCount = 0;
     const maxSearches = 500; // Smaller limit for type definitions
 
@@ -210,6 +232,28 @@ class XsdParser {
     return null;
   }
 
+  // New helper: extract children from a group definition by descending into its particles
+  void _extractFromGroupDef(XmlElement groupDef, List<String> validChildElements, Set<String> visited,
+      {int maxDepth = 2}) {
+    if (maxDepth <= 0) return;
+
+    final sequence = groupDef.findElements('xs:sequence').firstOrNull ??
+        groupDef.findElements('xsd:sequence').firstOrNull;
+    if (sequence != null) {
+      _extractChildElementsFromSequenceWithVisited(
+          sequence, validChildElements, visited,
+          maxDepth: maxDepth - 1);
+    }
+
+    final choice = groupDef.findElements('xs:choice').firstOrNull ??
+        groupDef.findElements('xsd:choice').firstOrNull;
+    if (choice != null) {
+      _extractChildElementsFromChoiceWithVisited(
+          choice, validChildElements, visited,
+          maxDepth: maxDepth - 1);
+    }
+  }
+
   void _extractChildElementsWithTimeoutAndVisited(XmlElement parentElementDef,
       List<String> validChildElements, Set<String> visited) {
     final elementName = parentElementDef.getAttribute('name');
@@ -221,7 +265,6 @@ class XsdParser {
       visited.add(elementName);
     }
 
-    // Handle direct element with complexType
     final complexType =
         parentElementDef.findElements('xs:complexType').firstOrNull ??
             parentElementDef.findElements('xsd:complexType').firstOrNull;
@@ -230,7 +273,6 @@ class XsdParser {
       _extractChildElementsFromComplexTypeWithVisited(
           complexType, validChildElements, visited);
     } else {
-      // Handle type reference with limited depth
       final typeAttr = parentElementDef.getAttribute('type');
       if (typeAttr != null) {
         final typeName = _stripPrefix(typeAttr);
@@ -242,44 +284,40 @@ class XsdParser {
             _extractChildElementsFromComplexTypeWithVisited(
                 typeDefinition, validChildElements, visited);
           } else {
-            // Try to find as a group if not found as complexType
             final groupDef = _findGroupDef(typeName);
             if (groupDef != null && !visited.contains(typeName)) {
               visited.add(typeName);
-              _extractChildElementsFromSequenceWithVisited(
+              _extractFromGroupDef(
                   groupDef, validChildElements, visited,
-                  maxDepth: 2);
+                  maxDepth: groupDepthLimit);
             }
           }
         }
       }
     }
 
-    // Handle group elements with limited depth
     final sequence = parentElementDef.findElements('xs:sequence').firstOrNull ??
         parentElementDef.findElements('xsd:sequence').firstOrNull;
     if (sequence != null) {
       _extractChildElementsFromSequenceWithVisited(
           sequence, validChildElements, visited,
-          maxDepth: 2);
+          maxDepth: groupDepthLimit);
     }
 
-    // Handle choice elements with limited depth
     final choice = parentElementDef.findElements('xs:choice').firstOrNull ??
         parentElementDef.findElements('xsd:choice').firstOrNull;
     if (choice != null) {
       _extractChildElementsFromChoiceWithVisited(
           choice, validChildElements, visited,
-          maxDepth: 2);
+          maxDepth: groupDepthLimit);
     }
 
-    // Handle xs:all similarly to sequence
     final allEl = parentElementDef.findElements('xs:all').firstOrNull ??
         parentElementDef.findElements('xsd:all').firstOrNull;
     if (allEl != null) {
       _extractChildElementsFromAllWithVisited(
           allEl, validChildElements, visited,
-          maxDepth: 2);
+          maxDepth: groupDepthLimit);
     }
   }
 
@@ -288,12 +326,10 @@ class XsdParser {
       {int maxDepth = 3}) {
     if (maxDepth <= 0) return;
 
-    // Handle complexContent (extension/restriction)
     final complexContent =
         complexType.findElements('xs:complexContent').firstOrNull ??
             complexType.findElements('xsd:complexContent').firstOrNull;
     if (complexContent != null) {
-      // extension
       final extension =
           complexContent.findElements('xs:extension').firstOrNull ??
               complexContent.findElements('xsd:extension').firstOrNull;
@@ -308,7 +344,6 @@ class XsdParser {
                 maxDepth: maxDepth - 1);
           }
         }
-        // Also process any sequences/choices under extension
         for (var seq in [
           ...extension.findElements('xs:sequence'),
           ...extension.findElements('xsd:sequence')
@@ -327,7 +362,6 @@ class XsdParser {
         }
       }
 
-      // restriction (treat like base type's particles)
       final restriction =
           complexContent.findElements('xs:restriction').firstOrNull ??
               complexContent.findElements('xsd:restriction').firstOrNull;
@@ -361,36 +395,31 @@ class XsdParser {
       }
     }
 
-    // Handle sequences within complex type
-    final sequences = [
+    for (var sequence in [
       ...complexType.findElements('xs:sequence'),
       ...complexType.findElements('xsd:sequence')
-    ];
-    for (var sequence in sequences) {
+    ]) {
       _extractChildElementsFromSequenceWithVisited(
           sequence, validChildElements, visited,
-          maxDepth: maxDepth - 1);
+          maxDepth: (maxDepth - 1).clamp(0, particleDepthLimit));
     }
 
-    // Handle choices within complex type
-    final choices = [
+    for (var choice in [
       ...complexType.findElements('xs:choice'),
       ...complexType.findElements('xsd:choice')
-    ];
-    for (var choice in choices) {
+    ]) {
       _extractChildElementsFromChoiceWithVisited(
           choice, validChildElements, visited,
-          maxDepth: maxDepth - 1);
+          maxDepth: (maxDepth - 1).clamp(0, particleDepthLimit));
     }
 
-    // Handle xs:all within complex type
-    final alls = [
+    for (var all in [
       ...complexType.findElements('xs:all'),
       ...complexType.findElements('xsd:all')
-    ];
-    for (var all in alls) {
-      _extractChildElementsFromAllWithVisited(all, validChildElements, visited,
-          maxDepth: maxDepth - 1);
+    ]) {
+      _extractChildElementsFromAllWithVisited(
+          all, validChildElements, visited,
+          maxDepth: (maxDepth - 1).clamp(0, particleDepthLimit));
     }
   }
 
@@ -399,14 +428,13 @@ class XsdParser {
       {int maxDepth = 3}) {
     if (maxDepth <= 0) return;
 
-    // Handle direct child elements (limit to avoid performance issues)
     final childElements = [
       ...sequence.findElements('xs:element'),
       ...sequence.findElements('xsd:element')
     ];
 
     int elementCount = 0;
-    const maxElements = 50; // Limit to avoid processing too many elements
+    const maxElements = 2000; // AUTOSAR schemas have very large sequences
 
     for (var childElement in childElements) {
       if (++elementCount > maxElements) break;
@@ -414,45 +442,39 @@ class XsdParser {
       final childElementName = childElement.getAttribute('name');
       final ref = childElement.getAttribute('ref');
       if (childElementName != null) {
-        validChildElements.add(childElementName);
+        _addNameWithSubstitutions(validChildElements, childElementName);
       } else if (ref != null) {
         final refName = _stripPrefix(ref);
-        // Resolve global element referenced by ref
         final def = _findElementDef(refName);
         if (def != null) {
           final defName = def.getAttribute('name');
           if (defName != null) {
-            validChildElements.add(defName);
+            _addNameWithSubstitutions(validChildElements, defName);
           }
         }
       }
     }
 
-    // Handle group references (limit recursive depth)
+    // Handle group references inside a sequence
     final groupRefs = [
       ...sequence.findElements('xs:group'),
       ...sequence.findElements('xsd:group')
     ];
 
     int groupCount = 0;
-    const maxGroups = 10; // Limit group references to avoid infinite recursion
+    const maxGroups = 50;
 
     for (var groupRef in groupRefs) {
       if (++groupCount > maxGroups) break;
 
       final refNameAttr = groupRef.getAttribute('ref');
       if (refNameAttr != null) {
-        // Remove namespace prefix if present
         final groupName = _stripPrefix(refNameAttr);
-
-        // Avoid infinite recursion by checking visited set
         if (!visited.contains(groupName) && maxDepth > 1) {
           visited.add(groupName);
-
-          // Use direct group lookup instead of recursive getValidChildElements
           final groupDef = _findGroupDef(groupName);
           if (groupDef != null) {
-            _extractChildElementsFromSequenceWithVisited(
+            _extractFromGroupDef(
                 groupDef, validChildElements, visited,
                 maxDepth: maxDepth - 1);
           }
@@ -466,14 +488,13 @@ class XsdParser {
       {int maxDepth = 3}) {
     if (maxDepth <= 0) return;
 
-    // Handle direct child elements in choice (limit to avoid performance issues)
     final childElements = [
       ...choice.findElements('xs:element'),
       ...choice.findElements('xsd:element')
     ];
 
     int elementCount = 0;
-    const maxElements = 20; // Smaller limit for choice elements
+    const maxElements = 5000; // AUTOSAR ELEMENTS choices can list thousands
 
     for (var childElement in childElements) {
       if (++elementCount > maxElements) break;
@@ -481,13 +502,32 @@ class XsdParser {
       final childElementName = childElement.getAttribute('name');
       final ref = childElement.getAttribute('ref');
       if (childElementName != null) {
-        validChildElements.add(childElementName);
+        _addNameWithSubstitutions(validChildElements, childElementName);
       } else if (ref != null) {
         final refName = _stripPrefix(ref);
         final def = _findElementDef(refName);
         if (def != null) {
           final defName = def.getAttribute('name');
-          if (defName != null) validChildElements.add(defName);
+          if (defName != null) _addNameWithSubstitutions(validChildElements, defName);
+        }
+      }
+    }
+
+    // Handle group references inside a choice
+    final groupRefs = [
+      ...choice.findElements('xs:group'),
+      ...choice.findElements('xsd:group')
+    ];
+    for (final groupRef in groupRefs) {
+      final refNameAttr = groupRef.getAttribute('ref');
+      if (refNameAttr != null && maxDepth > 1) {
+        final groupName = _stripPrefix(refNameAttr);
+        if (!visited.contains(groupName)) {
+          visited.add(groupName);
+          final groupDef = _findGroupDef(groupName);
+          if (groupDef != null) {
+            _extractFromGroupDef(groupDef, validChildElements, visited, maxDepth: maxDepth - 1);
+          }
         }
       }
     }
@@ -505,11 +545,11 @@ class XsdParser {
       final name = child.getAttribute('name');
       final ref = child.getAttribute('ref');
       if (name != null) {
-        validChildElements.add(name);
+        _addNameWithSubstitutions(validChildElements, name);
       } else if (ref != null) {
         final def = _findElementDef(_stripPrefix(ref));
         final defName = def?.getAttribute('name');
-        if (defName != null) validChildElements.add(defName);
+        if (defName != null) _addNameWithSubstitutions(validChildElements, defName);
       }
     }
   }
@@ -521,13 +561,10 @@ class XsdParser {
     final elementDef = _findElementDef(elementName);
     if (elementDef == null) return validAttributes;
 
-    // Accumulate attributes from inline complexType, referenced type and complexContent base types
-    void collectFromComplexType(
-        XmlElement complexType, Set<String> visitedTypes,
+    void collectFromComplexType(XmlElement complexType, Set<String> visitedTypes,
         {int depth = 3}) {
       if (depth <= 0) return;
 
-      // Direct attributes
       for (final attr in [
         ...complexType.findElements('xs:attribute'),
         ...complexType.findElements('xsd:attribute')
@@ -536,9 +573,6 @@ class XsdParser {
         if (name != null) validAttributes.add(name);
       }
 
-      // Attribute groups not handled (can be added later)
-
-      // complexContent
       final complexContent =
           complexType.findElements('xs:complexContent').firstOrNull ??
               complexType.findElements('xsd:complexContent').firstOrNull;
@@ -546,7 +580,6 @@ class XsdParser {
         final ext = complexContent.findElements('xs:extension').firstOrNull ??
             complexContent.findElements('xsd:extension').firstOrNull;
         if (ext != null) {
-          // attributes inside extension
           for (final attr in [
             ...ext.findElements('xs:attribute'),
             ...ext.findElements('xsd:attribute')
@@ -561,8 +594,7 @@ class XsdParser {
               visitedTypes.add(baseName);
               final baseType = _findTypeDef(baseName);
               if (baseType != null) {
-                collectFromComplexType(baseType, visitedTypes,
-                    depth: depth - 1);
+                collectFromComplexType(baseType, visitedTypes, depth: depth - 1);
               }
             }
           }
@@ -586,8 +618,7 @@ class XsdParser {
               visitedTypes.add(baseName);
               final baseType = _findTypeDef(baseName);
               if (baseType != null) {
-                collectFromComplexType(baseType, visitedTypes,
-                    depth: depth - 1);
+                collectFromComplexType(baseType, visitedTypes, depth: depth - 1);
               }
             }
           }
@@ -595,20 +626,19 @@ class XsdParser {
       }
     }
 
-    // Inline complexType
-    final inlineType = elementDef.findElements('xs:complexType').firstOrNull ??
-        elementDef.findElements('xsd:complexType').firstOrNull;
+    final inlineType =
+        elementDef.findElements('xs:complexType').firstOrNull ??
+            elementDef.findElements('xsd:complexType').firstOrNull;
     if (inlineType != null) {
-      collectFromComplexType(inlineType, <String>{});
+      collectFromComplexType(inlineType, <String>{}, depth: particleDepthLimit);
     }
 
-    // Referenced type
     final typeAttr = elementDef.getAttribute('type');
     if (typeAttr != null) {
       final typeName = _stripPrefix(typeAttr);
       final typeDef = _findTypeDef(typeName);
       if (typeDef != null) {
-        collectFromComplexType(typeDef, <String>{});
+        collectFromComplexType(typeDef, <String>{}, depth: particleDepthLimit);
       }
     }
 

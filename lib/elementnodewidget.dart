@@ -29,26 +29,35 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
 
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    final items = <PopupMenuEntry<String>>[];
+    if (_canEditValue(widget.node)) {
+      items.add(const PopupMenuItem<String>(
+          value: 'edit', child: Text('Edit Value')));
+    }
+    items.addAll(const [
+      PopupMenuItem<String>(value: 'add', child: Text('Add Child')),
+      PopupMenuItem<String>(value: 'delete', child: Text('Delete Node')),
+    ]);
+
     showMenu(
       context: context,
       position: RelativeRect.fromRect(
         tapPosition & const Size(40, 40),
         Offset.zero & overlay.size,
       ),
-      items: <PopupMenuEntry<String>>[
-        if (widget.node.children.isEmpty)
-          const PopupMenuItem<String>(value: 'edit', child: Text('Edit Value')),
-        if (widget.xsdParser != null)
-          const PopupMenuItem<String>(value: 'add', child: Text('Add Child')),
-        const PopupMenuItem<String>(
-            value: 'delete', child: Text('Delete Node')),
-      ],
+      items: items,
     ).then((value) {
       notifier.setContextMenuNode(null);
       if (value != null) {
         _handleMenuSelection(value);
       }
     });
+  }
+
+  bool _canEditValue(ElementNode node) {
+    return node.children.isEmpty ||
+        (node.children.length == 1 && node.children.first.children.isEmpty);
   }
 
   void _handleMenuSelection(String value) {
@@ -67,8 +76,11 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
   }
 
   void _showEditDialog(ElementNode node) {
-    final TextEditingController controller =
-        TextEditingController(text: node.children.first.elementText);
+    if (!_canEditValue(node)) return;
+    final hasTextChild =
+        node.children.length == 1 && node.children.first.children.isEmpty;
+    final TextEditingController controller = TextEditingController(
+        text: hasTextChild ? node.children.first.elementText : '');
     showDialog(
       context: context,
       builder: (context) {
@@ -99,12 +111,16 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
     String? selectedElement;
     final validChildren =
         widget.xsdParser?.getValidChildElements(node.elementText) ?? [];
+    final customController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
+            final canAdd =
+                (selectedElement != null && selectedElement!.isNotEmpty) ||
+                    customController.text.trim().isNotEmpty;
             return AlertDialog(
               title: const Text('Add Child Node'),
               content: Column(
@@ -112,9 +128,7 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                 children: [
                   Text('Valid children for: ${node.elementText}'),
                   const SizedBox(height: 16),
-                  if (validChildren.isEmpty)
-                    const Text('No valid child elements found in schema')
-                  else
+                  if (validChildren.isNotEmpty)
                     DropdownButton<String>(
                       hint: const Text("Select a valid element"),
                       value: selectedElement,
@@ -131,7 +145,18 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                           child: Text(value),
                         );
                       }).toList(),
+                    )
+                  else
+                    const Text('No valid child elements found in schema'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: customController,
+                    decoration: const InputDecoration(
+                      labelText: 'Custom element name (optional)',
+                      border: OutlineInputBorder(),
                     ),
+                    onChanged: (_) => setState(() {}),
+                  ),
                 ],
               ),
               actions: [
@@ -141,15 +166,15 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                 ),
                 TextButton(
                   child: const Text('Add'),
-                  onPressed: selectedElement != null || validChildren.isEmpty
+                  onPressed: canAdd
                       ? () {
-                          if (selectedElement != null) {
+                          final name = selectedElement?.trim().isNotEmpty == true
+                              ? selectedElement!
+                              : customController.text.trim();
+                          if (name.isNotEmpty) {
                             ref
                                 .read(widget.treeStateProvider.notifier)
-                                .addChildNode(node.id, selectedElement!);
-                          } else if (validChildren.isEmpty) {
-                            // Allow manual entry if no schema validation available
-                            _showManualEntryDialog(node);
+                                .addChildNode(node.id, name);
                           }
                           Navigator.of(context).pop();
                         }
@@ -158,50 +183,6 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
               ],
             );
           },
-        );
-      },
-    );
-  }
-
-  void _showManualEntryDialog(ElementNode node) {
-    final controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add Child Node (Manual Entry)'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('No schema available. Enter element name manually:'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  labelText: 'Element Name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            TextButton(
-              child: const Text('Add'),
-              onPressed: () {
-                if (controller.text.isNotEmpty) {
-                  ref
-                      .read(widget.treeStateProvider.notifier)
-                      .addChildNode(node.id, controller.text);
-                }
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
         );
       },
     );
@@ -226,7 +207,7 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
             DepthIndicator(depth: widget.node.depth, isLastChild: false),
             if (widget.node.children.isNotEmpty)
               IconButton(
-                iconSize: 16,
+                iconSize: 24,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 icon: Icon(widget.node.isCollapsed

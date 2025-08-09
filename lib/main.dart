@@ -18,6 +18,7 @@ final fileTabsProvider =
 });
 
 final loadingStateProvider = StateProvider<bool>((ref) => false);
+final diagnosticsProvider = StateProvider<bool>((ref) => false);
 
 final activeTabIndexProvider = StateProvider<int>((ref) => 0);
 
@@ -34,19 +35,21 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
   FileTabsNotifier(this._ref) : super([]);
 
   final ARXMLFileLoader _arxmlLoader = const ARXMLFileLoader();
-  XsdParser? _xsdParser;
-  String? _defaultXsdPath;
+  // Current schema for session (persisted in memory)
+  XsdParser? _currentXsdParser;
+  String? _currentXsdPath;
 
-  // Load the default AUTOSAR XSD schema
+  // Load the default AUTOSAR XSD schema into current session schema
   Future<void> _loadXsdSchema() async {
-    if (_xsdParser != null) return; // Already loaded
+    if (_currentXsdParser != null) return; // Already loaded
 
     try {
       final xsdFile = File('lib/res/xsd/AUTOSAR_00050.xsd');
       if (await xsdFile.exists()) {
-        _defaultXsdPath = xsdFile.path;
+        _currentXsdPath = xsdFile.path;
         final xsdContent = await xsdFile.readAsString();
-        _xsdParser = XsdParser(xsdContent);
+        final verbose = _ref.read(diagnosticsProvider);
+        _currentXsdParser = XsdParser(xsdContent, verbose: verbose);
       }
     } catch (e) {
       // Schema loading failed, continue without schema validation
@@ -67,7 +70,14 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       final filePath = result.files.single.path!;
       try {
         final content = await File(filePath).readAsString();
-        final parser = XsdParser(content);
+        final verbose = _ref.read(diagnosticsProvider);
+        final parser = XsdParser(content, verbose: verbose);
+
+        // Update session current schema so future tabs use it
+        _currentXsdParser = parser;
+        _currentXsdPath = filePath;
+
+        // Update active tab
         final updated = [...state];
         final tab = updated[activeIndex];
         updated[activeIndex] = FileTabState(
@@ -89,7 +99,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       _ref.read(loadingStateProvider.notifier).state = true;
       print('DEBUG: Loading state set to true');
 
-      // Load XSD schema if not already loaded
+      // Load default XSD schema if not already loaded
       await _loadXsdSchema();
       print('DEBUG: XSD schema loading completed');
 
@@ -112,8 +122,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         final newTab = FileTabState(
           path: filePath,
           treeStateProvider: arxmlTreeStateProvider(nodes),
-          xsdParser: _xsdParser,
-          xsdPath: _defaultXsdPath,
+          xsdParser: _currentXsdParser,
+          xsdPath: _currentXsdPath,
         );
 
         state = [...state, newTab];
@@ -122,7 +132,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         print('DEBUG: Active tab index set to: ${state.length - 1}');
 
         // Give a small delay to ensure state propagation
-        await Future.delayed(Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 100));
         print('DEBUG: State propagation complete');
       } else {
         print('DEBUG: File picker cancelled or no file selected');
@@ -137,7 +147,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
   }
 
   Future<void> createNewFile() async {
-    // Load XSD schema if not already loaded
+    // Load default XSD schema if not already loaded
     await _loadXsdSchema();
 
     String? outputFile = await FilePicker.platform.saveFile(
@@ -158,8 +168,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       final newTab = FileTabState(
         path: outputFile,
         treeStateProvider: arxmlTreeStateProvider(nodes),
-        xsdParser: _xsdParser,
-        xsdPath: _defaultXsdPath,
+        xsdParser: _currentXsdParser,
+        xsdPath: _currentXsdPath,
       );
       state = [...state, newTab];
       _ref.read(activeTabIndexProvider.notifier).state = state.length - 1;
@@ -321,6 +331,7 @@ class _MyHomePageState extends ConsumerState<MyHomePage>
     final activeTab = ref.watch(activeTabProvider);
     final notifier = ref.read(fileTabsProvider.notifier);
     final isLoading = ref.watch(loadingStateProvider);
+    final diagnosticsOn = ref.watch(diagnosticsProvider);
     final activeTreeState =
         activeTab != null ? ref.watch(activeTab.treeStateProvider) : null;
 
@@ -357,6 +368,20 @@ class _MyHomePageState extends ConsumerState<MyHomePage>
             icon: const Icon(Icons.file_present),
             tooltip: 'Select XSD schema for active tab',
             onPressed: notifier.pickXsdForActiveTab,
+          ),
+          IconButton(
+            icon: Icon(
+              diagnosticsOn ? Icons.bug_report : Icons.bug_report_outlined,
+              color: diagnosticsOn
+                  ? Theme.of(context).colorScheme.secondary
+                  : Colors.white,
+            ),
+            tooltip: diagnosticsOn
+                ? 'Verbose XSD diagnostics: ON'
+                : 'Verbose XSD diagnostics: OFF',
+            onPressed: () {
+              ref.read(diagnosticsProvider.notifier).state = !diagnosticsOn;
+            },
           ),
           IconButton(
             icon: const Icon(Icons.search),
@@ -402,34 +427,34 @@ class _MyHomePageState extends ConsumerState<MyHomePage>
             },
           ),
         ],
-        bottom: (tabs.isEmpty || _tabController == null)
+        bottom: tabs.isEmpty || _tabController == null
             ? null
             : TabBar(
                 controller: _tabController!,
                 isScrollable: true,
-                indicator: UnderlineTabIndicator(
-                  borderSide: BorderSide(
-                    color: Theme.of(context).colorScheme.secondary,
-                    width: 3,
-                  ),
-                ),
                 labelColor: Colors.white,
-                unselectedLabelColor: const Color(0xCCFFFFFF),
+                unselectedLabelColor: Colors.white70,
+                indicatorColor: Colors.white,
                 tabs: tabs
                     .map((tab) => Tab(
                           child: Row(
                             children: [
-                              Text(tab.path.split(Platform.pathSeparator).last),
+                              Text(
+                                tab.path.split(Platform.pathSeparator).last,
+                                style: const TextStyle(color: Colors.white),
+                              ),
                               if (tab.xsdPath != null)
                                 Padding(
                                   padding: const EdgeInsets.only(left: 6.0),
                                   child: Tooltip(
                                     message: 'Schema: ${tab.xsdPath}',
-                                    child: const Icon(Icons.schema, size: 16, color: Colors.white),
+                                    child: const Icon(Icons.schema,
+                                        size: 16, color: Colors.white),
                                   ),
                                 ),
                               IconButton(
-                                icon: const Icon(Icons.close, size: 16, color: Colors.white70),
+                                icon: const Icon(Icons.close,
+                                    size: 16, color: Colors.white70),
                                 onPressed: () =>
                                     notifier.closeFile(tabs.indexOf(tab)),
                               ),
