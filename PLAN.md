@@ -5,15 +5,15 @@
 ## 1.1 Immediate Next Actions (UI + Editing QoL)
 - [x] Add visual selected-tab state for filenames when using custom Tab child
 - [x] Refine Add Child UX (remember last picked child, add validation hints)
-- [ ] Inline SHORT-NAME display on rows (keep SHORT-NAME child collapsed by default) (PRIORITY)
-- [ ] Node context menu for containers: "Collapse children" and "Expand children" (ElementNodeWidget + ArxmlTreeStateNotifier)
+- [x] Inline SHORT-NAME display on rows (keep SHORT-NAME child collapsed by default) (PRIORITY)
+- [x] Node context menu for containers: "Collapse children" and "Expand children" (ElementNodeWidget + ArxmlTreeStateNotifier)
 - [ ] Reference status in tree (PRIORITY):
-  - [ ] Show per-row indicator for DEFINITION-REF (Found in workspace / Missing); tooltip shows target file path
-  - [ ] One-click "Go to definition" from row + context menu; disabled state when missing
+  - [x] Show per-row indicator for DEFINITION-REF (Found in workspace / Missing); tooltip shows target file path
+  - [x] One-click "Go to definition" from row + context menu; disabled state when missing
   - [ ] Reference normalization to match index (absolute/relative paths, vendor formats, leading '/'; case/namespace handling)
 - [ ] Unsaved changes indicator (PRIORITY):
-  - [ ] Show an asterisk/dot on modified tab titles; tooltip "Unsaved changes"
-  - [ ] AppBar "Save All" action; prompt on tab close when there are unsaved edits
+  - [x] Show an asterisk/dot on modified tab titles; tooltip "Unsaved changes"
+  - [x] AppBar "Save All" action; prompt on tab close when there are unsaved edits
 
 ## 1.2 XSD Workflow Improvements (remaining)
 - [x] Improve traversal for nested sequences/choices/groups (deeper where safe)
@@ -73,7 +73,7 @@
 - [ ] Keyboard navigation and better selection/scroll focusing
 - [ ] Accessibility/contrast modes and adjustable density
 - [ ] NavigationRail (PRIORITY): add view switching (File Editor, Workspace, Validation, Settings)
-- [ ] Inline SHORT-NAME display on rows (Moved to 1.1 as PRIORITY)
+- [x] Inline SHORT-NAME display on rows (Moved to 1.1 as PRIORITY)
 
 ## 1.8 Performance & Architecture
 - [ ] Schema index cache per version; lazy-load schema fragments
