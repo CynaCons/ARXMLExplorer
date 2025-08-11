@@ -5,6 +5,7 @@ import 'package:xml/xml.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart' as fp;
 import 'main.dart' show fileTabsProvider; // for navigation via notifier
+import 'ref_normalizer.dart';
 
 class WorkspaceTarget {
   final String filePath;
@@ -12,37 +13,54 @@ class WorkspaceTarget {
   const WorkspaceTarget({required this.filePath, required this.shortNamePath});
 }
 
+enum IndexStatus { queued, processing, processed, error }
+
 class WorkspaceIndexState {
   final String? rootDir;
   final bool indexing;
   final DateTime? lastScan;
   final int filesIndexed;
-  final Map<String, WorkspaceTarget>
-      targets; // key: absolute ref string like "/Pkg/Comp/Port"
+  final int totalFilesToIndex;
+  final Map<String, List<WorkspaceTarget>>
+      targets; // key: absolute ref string like "/Pkg/Comp/Port" -> list of candidates
+  final Map<String, IndexStatus> fileStatus; // filePath -> status
 
   const WorkspaceIndexState({
     this.rootDir,
     this.indexing = false,
     this.lastScan,
     this.filesIndexed = 0,
+    this.totalFilesToIndex = 0,
     this.targets = const {},
+    this.fileStatus = const {},
   });
 
-  bool hasTarget(String ref) => targets.containsKey(ref);
+  // 0 when unknown/indeterminate; otherwise 0..1
+  double get progress =>
+      totalFilesToIndex <= 0 ? 0 : filesIndexed / totalFilesToIndex;
+
+  bool hasTarget(String ref) => (targets[ref] ?? const []).isNotEmpty;
+  bool hasTargetNormalized(String ref, {String? basePath}) =>
+      (targets[RefNormalizer.normalize(ref, basePath: basePath)] ?? const [])
+          .isNotEmpty;
 
   WorkspaceIndexState copyWith({
     String? rootDir,
     bool? indexing,
     DateTime? lastScan,
     int? filesIndexed,
-    Map<String, WorkspaceTarget>? targets,
+    int? totalFilesToIndex,
+    Map<String, List<WorkspaceTarget>>? targets,
+    Map<String, IndexStatus>? fileStatus,
   }) {
     return WorkspaceIndexState(
       rootDir: rootDir ?? this.rootDir,
       indexing: indexing ?? this.indexing,
       lastScan: lastScan ?? this.lastScan,
       filesIndexed: filesIndexed ?? this.filesIndexed,
+      totalFilesToIndex: totalFilesToIndex ?? this.totalFilesToIndex,
       targets: targets ?? this.targets,
+      fileStatus: fileStatus ?? this.fileStatus,
     );
   }
 }
@@ -66,9 +84,14 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
   }
 
   Future<void> indexFolder(String rootDir) async {
-    state = state.copyWith(indexing: true, rootDir: rootDir);
-    final targets = <String, WorkspaceTarget>{};
-    int count = 0;
+    state = state.copyWith(
+      indexing: true,
+      rootDir: rootDir,
+      filesIndexed: 0,
+      totalFilesToIndex: 0,
+      fileStatus: {},
+    );
+    final targets = <String, List<WorkspaceTarget>>{};
 
     final dir = Directory(rootDir);
     if (!await dir.exists()) {
@@ -76,19 +99,59 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
       return;
     }
 
+    // First pass: collect files to index
+    final files = <File>[];
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
       if (entity is File && _isArxml(entity.path)) {
-        try {
-          final content = await entity.readAsString();
-          final doc = XmlDocument.parse(content);
-          final fileTargets = _extractTargets(doc);
-          for (final t in fileTargets) {
-            targets[t.$1] =
-                WorkspaceTarget(filePath: entity.path, shortNamePath: t.$2);
+        files.add(entity);
+      }
+    }
+
+    // Initialize file statuses as queued
+    final statuses = <String, IndexStatus>{
+      for (final f in files) f.path: IndexStatus.queued
+    };
+
+    state = state.copyWith(
+      totalFilesToIndex: files.length,
+      fileStatus: statuses,
+    );
+
+    // Second pass: parse and extract targets, updating progress
+    int processed = 0;
+    for (final file in files) {
+      try {
+        // mark processing
+        statuses[file.path] = IndexStatus.processing;
+        state =
+            state.copyWith(fileStatus: Map<String, IndexStatus>.from(statuses));
+
+        final content = await file.readAsString();
+        final doc = XmlDocument.parse(content);
+        final fileTargets = _extractTargets(doc);
+        for (final t in fileTargets) {
+          final key = t.$1;
+          final val = WorkspaceTarget(filePath: file.path, shortNamePath: t.$2);
+          final list = targets.putIfAbsent(key, () => <WorkspaceTarget>[]);
+          // avoid duplicate exact entries
+          if (!list.any((e) =>
+              e.filePath == val.filePath &&
+              _pathsEqual(e.shortNamePath, val.shortNamePath))) {
+            list.add(val);
           }
-          count++;
-        } catch (_) {
-          // ignore parse failures for indexing
+        }
+        statuses[file.path] = IndexStatus.processed;
+      } catch (_) {
+        // ignore parse failures for indexing
+        statuses[file.path] = IndexStatus.error;
+      } finally {
+        processed++;
+        // Update progress occasionally to avoid excessive rebuilds
+        if (processed % 5 == 0 || processed == files.length) {
+          state = state.copyWith(
+            filesIndexed: processed,
+            fileStatus: Map<String, IndexStatus>.from(statuses),
+          );
         }
       }
     }
@@ -96,8 +159,73 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
     state = state.copyWith(
       indexing: false,
       lastScan: DateTime.now(),
-      filesIndexed: count,
+      filesIndexed: processed,
       targets: targets,
+      fileStatus: Map<String, IndexStatus>.from(statuses),
+    );
+  }
+
+  // Add specific files to the index (e.g., from "Add files" in Workspace UI)
+  Future<void> addFiles(List<String> paths) async {
+    if (paths.isEmpty) return;
+    // ensure absolute, filter arxml
+    final files =
+        paths.map((pth) => File(pth)).where((f) => _isArxml(f.path)).toList();
+    if (files.isEmpty) return;
+
+    // Start/continue indexing session
+    final statuses = Map<String, IndexStatus>.from(state.fileStatus);
+    final targets = Map<String, List<WorkspaceTarget>>.from(state.targets);
+    for (final f in files) {
+      statuses[f.path] = IndexStatus.queued;
+    }
+    state = state.copyWith(
+      indexing: true,
+      totalFilesToIndex: files.length,
+      filesIndexed: 0,
+      fileStatus: statuses,
+    );
+
+    int processed = 0;
+    for (final file in files) {
+      try {
+        statuses[file.path] = IndexStatus.processing;
+        state =
+            state.copyWith(fileStatus: Map<String, IndexStatus>.from(statuses));
+
+        final content = await file.readAsString();
+        final doc = XmlDocument.parse(content);
+        final fileTargets = _extractTargets(doc);
+        for (final t in fileTargets) {
+          final key = t.$1;
+          final val = WorkspaceTarget(filePath: file.path, shortNamePath: t.$2);
+          final list = targets.putIfAbsent(key, () => <WorkspaceTarget>[]);
+          if (!list.any((e) =>
+              e.filePath == val.filePath &&
+              _pathsEqual(e.shortNamePath, val.shortNamePath))) {
+            list.add(val);
+          }
+        }
+        statuses[file.path] = IndexStatus.processed;
+      } catch (_) {
+        statuses[file.path] = IndexStatus.error;
+      } finally {
+        processed++;
+        if (processed % 5 == 0 || processed == files.length) {
+          state = state.copyWith(
+            filesIndexed: processed,
+            fileStatus: Map<String, IndexStatus>.from(statuses),
+          );
+        }
+      }
+    }
+
+    state = state.copyWith(
+      indexing: false,
+      lastScan: DateTime.now(),
+      filesIndexed: processed,
+      targets: targets,
+      fileStatus: Map<String, IndexStatus>.from(statuses),
     );
   }
 
@@ -112,14 +240,53 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
     });
   }
 
-  Future<void> goToDefinition(String ref, WidgetRef refCtx) async {
-    final target = state.targets[ref];
-    if (target == null) return;
-    // Ask tabs notifier to open file and navigate
-    await refCtx.read(fileTabsProvider.notifier).openFileAndNavigate(
-          target.filePath,
-          shortNamePath: target.shortNamePath,
-        );
+  // Return all candidates for a given reference (considering normalization variants)
+  List<WorkspaceTarget> findDefinitionCandidates(String ref,
+      {String? basePath}) {
+    final normalized = RefNormalizer.normalize(ref, basePath: basePath);
+    final normalizedEcuc = RefNormalizer.normalizeEcuc(ref, basePath: basePath);
+    final normalizedPort =
+        RefNormalizer.normalizePortRef(ref, basePath: basePath);
+
+    final out = <WorkspaceTarget>[];
+    void addAll(List<WorkspaceTarget>? items) {
+      if (items == null) return;
+      for (final t in items) {
+        if (!out.any((e) =>
+            e.filePath == t.filePath &&
+            _pathsEqual(e.shortNamePath, t.shortNamePath))) {
+          out.add(t);
+        }
+      }
+    }
+
+    addAll(state.targets[normalized]);
+    addAll(state.targets[normalizedEcuc]);
+    addAll(state.targets[normalizedPort]);
+    return out;
+  }
+
+  static bool _pathsEqual(List<String> a, List<String> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  Future<void> goToDefinition(String ref, WidgetRef refCtx,
+      {String? basePath}) async {
+    final candidates = findDefinitionCandidates(ref, basePath: basePath);
+    if (candidates.isEmpty) return;
+    if (candidates.length == 1) {
+      final target = candidates.first;
+      await refCtx.read(fileTabsProvider.notifier).openFileAndNavigate(
+            target.filePath,
+            shortNamePath: target.shortNamePath,
+          );
+    }
+    // If multiple, caller/UI should handle disambiguation.
   }
 
   static bool _isArxml(String path) {
@@ -131,6 +298,16 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
   static List<(String, List<String>)> _extractTargets(XmlDocument doc) {
     final results = <(String, List<String>)>[];
 
+    void addAllKeys(String abs, List<String> nextPath) {
+      // canonical absolute
+      results.add((abs, nextPath));
+      // alternative: ecuC and port forms
+      final ecuc = RefNormalizer.normalizeEcuc(abs);
+      if (ecuc != abs) results.add((ecuc, nextPath));
+      final port = RefNormalizer.normalizePortRef(abs);
+      if (port != abs) results.add((port, nextPath));
+    }
+
     void walk(XmlElement el, List<String> shortPath) {
       // If this element has a SHORT-NAME child with text, capture it
       final sn = el.findElements('SHORT-NAME').firstOrNull?.innerText.trim();
@@ -138,7 +315,7 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
       if (sn != null && sn.isNotEmpty) {
         nextPath = [...shortPath, sn];
         final abs = '/${nextPath.join('/')}';
-        results.add((abs, nextPath));
+        addAllKeys(abs, nextPath);
       }
       // Recurse into child elements
       for (final c in el.childElements) {
@@ -147,9 +324,7 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
     }
 
     for (final root in doc.childElements) {
-      if (root is XmlElement) {
-        walk(root, const []);
-      }
+      walk(root, const []);
     }
     return results;
   }

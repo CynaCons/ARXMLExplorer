@@ -19,7 +19,7 @@ class AstLruCache {
     if (entry == null) return null;
     _bump(path);
     return entry.nodes;
-    }
+  }
 
   void put(String path, List<ElementNode> nodes) {
     if (_map.containsKey(path)) {
@@ -44,4 +44,5 @@ class AstLruCache {
   List<String> get keys => List.unmodifiable(_lru);
 }
 
-final astCacheProvider = Provider<AstLruCache>((ref) => AstLruCache(capacity: 8));
+final astCacheProvider =
+    Provider<AstLruCache>((ref) => AstLruCache(capacity: 8));

@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
+import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:flutter/services.dart';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:path/path.dart' as p;
 
 import 'package:arxml_explorer/arxml_tree_view_state.dart';
 import 'package:arxml_explorer/xsd_parser.dart';
 import 'package:arxml_explorer/arxml_validator.dart';
 import 'elementnodewidget.dart';
 import 'arxmlloader.dart';
-import 'elementnodesearchdelegate.dart';
 import 'package:arxml_explorer/app_providers.dart';
 import 'workspace_indexer.dart';
 import 'package:arxml_explorer/elementnode.dart';
@@ -57,7 +59,8 @@ class ValidationScheduler extends StateNotifier<int> {
     final tree = ref.read(tab.treeStateProvider);
     final parser = tab.xsdParser!;
     final validator = const ArxmlValidator();
-    final issues = validator.validate(tree.rootNodes, parser);
+    final opts = ref.read(validationOptionsProvider);
+    final issues = validator.validate(tree.rootNodes, parser, options: opts);
     ref.read(validationIssuesProvider.notifier).state = issues;
     state++; // bump version for any listeners
   }
@@ -71,6 +74,12 @@ class ValidationScheduler extends StateNotifier<int> {
 
 // UI scroll request for navigation (index in visible list)
 final scrollToIndexProvider = StateProvider<int?>((ref) => null);
+
+// NEW: Validation filter text
+final validationFilterProvider = StateProvider<String>((ref) => '');
+
+// NEW: NavigationRail selected index (0=Editor, 1=Workspace, 2=Validation, 3=Settings)
+final navRailIndexProvider = StateProvider<int>((ref) => 0);
 
 // State Notifier
 class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
@@ -145,32 +154,102 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
   // Attempt to detect AUTOSAR schema reference/version from ARXML header
   Future<String?> _detectSchemaPathFromArxml(String content) async {
     // Look for explicit schemaLocation hints or AUTOSAR version in top-level tag
-    // e.g., xmlns:xsi and xsi:schemaLocation or AUTOSAR/@xsi:noNamespaceSchemaLocation
-    final lines = content.split(RegExp(r'\r?\n')).take(50).join('\n');
-    final schemaLocMatch =
-        RegExp(r'schemaLocation\s*=\s*"([^"]+)"').firstMatch(lines);
-    if (schemaLocMatch != null) {
-      final loc = schemaLocMatch.group(1)!;
-      // If it references a known local file name, try to map to lib/res/xsd
-      final filename = loc.split(RegExp(r'[\\/]')).last;
-      final candidate = 'lib/res/xsd/' + filename;
-      if (await File(candidate).exists()) return candidate;
+    final header = content.split(RegExp(r'\r?\n')).take(100).join(' ');
+
+    // Helper: try candidates (filenames or paths) in bundled xsd then workspace
+    Future<String?> _resolveCandidates(List<String> candidates) async {
+      // 1) Check absolute/relative path directly if exists
+      for (final c in candidates) {
+        try {
+          final pathGuess = c;
+          if (await File(pathGuess).exists()) return pathGuess;
+        } catch (_) {}
+      }
+      // 2) Check bundled lib/res/xsd by basename
+      for (final c in candidates) {
+        final base = c.split(RegExp(r'[\\\/]')).last;
+        final bundled = 'lib/res/xsd/' + base;
+        if (await File(bundled).exists()) return bundled;
+      }
+      // 3) Search workspace folder recursively by basename
+      final wsRoot = _ref.read(workspaceIndexProvider).rootDir;
+      if (wsRoot != null) {
+        for (final c in candidates) {
+          final base = c.split(RegExp(r'[\\\/]')).last;
+          final hit = await _findInWorkspace(wsRoot, base);
+          if (hit != null) return hit;
+        }
+      }
+      return null;
     }
 
+    // Parse xsi:schemaLocation (pairs: namespace URI followed by URL/path)
+    final schemaLocAttr = RegExp(r'xsi:schemaLocation\s*=\s*"([^"]+)"')
+        .firstMatch(header)
+        ?.group(1);
+    if (schemaLocAttr != null) {
+      final tokens = schemaLocAttr
+          .split(RegExp(r'\s+'))
+          .where((t) => t.isNotEmpty)
+          .toList();
+      final urls = <String>[];
+      for (var i = 0; i < tokens.length; i++) {
+        // take every second token as a location if present
+        if (i % 2 == 1) {
+          var u = tokens[i];
+          // strip URI scheme and fragments
+          final scheme = u.indexOf('://');
+          if (scheme > 0) u = u.substring(scheme + 3);
+          final hash = u.indexOf('#');
+          if (hash >= 0) u = u.substring(0, hash);
+          final q = u.indexOf('?');
+          if (q >= 0) u = u.substring(0, q);
+          urls.add(u);
+        }
+      }
+      final resolved = await _resolveCandidates(urls);
+      if (resolved != null) return resolved;
+    }
+
+    // Parse noNamespace schema location
+    final noNsAttr = RegExp(r'noNamespaceSchemaLocation\s*=\s*"([^"]+)"')
+        .firstMatch(header)
+        ?.group(1);
+    if (noNsAttr != null) {
+      final resolved = await _resolveCandidates([noNsAttr]);
+      if (resolved != null) return resolved;
+    }
+
+    // Version hint on AUTOSAR root
     final versionMatch =
-        RegExp(r'AUTOSAR[^>]*version\s*=\s*"([^"]+)"').firstMatch(lines);
+        RegExp(r'AUTOSAR[^>]*version\s*=\s*"([^"]+)"').firstMatch(header);
     if (versionMatch != null) {
       final ver = versionMatch.group(1)!.trim();
-      // Known mapping examples in repo
-      final candidates = [
-        'lib/res/xsd/AUTOSAR_$ver.xsd',
-        'lib/res/xsd/AUTOSAR_${ver.replaceAll('.', '-')}.xsd',
-        'lib/res/xsd/AUTOSAR_00050.xsd',
+      final variants = <String>[
+        'AUTOSAR_$ver.xsd',
+        'AUTOSAR_${ver.replaceAll('.', '-')}.xsd',
+        'AUTOSAR_${ver.replaceAll('-', '.')}.xsd',
       ];
-      for (final c in candidates) {
-        if (await File(c).exists()) return c;
-      }
+      final resolved = await _resolveCandidates(variants);
+      if (resolved != null) return resolved;
     }
+
+    // Fallback to default bundled
+    final fallback = 'lib/res/xsd/AUTOSAR_00050.xsd';
+    return await File(fallback).exists() ? fallback : null;
+  }
+
+  // Search workspace folder recursively for a filename
+  Future<String?> _findInWorkspace(String rootDir, String basename) async {
+    try {
+      final dir = Directory(rootDir);
+      await for (final ent in dir.list(recursive: true, followLinks: false)) {
+        if (ent is File &&
+            ent.path.split(Platform.pathSeparator).last == basename) {
+          return ent.path;
+        }
+      }
+    } catch (_) {}
     return null;
   }
 
@@ -179,8 +258,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     final activeIndex = _ref.read(activeTabIndexProvider);
     if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) return;
 
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
+    fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
+      type: fp.FileType.custom,
       allowedExtensions: ['xsd'],
     );
 
@@ -221,8 +300,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       await _loadXsdSchema();
       print('DEBUG: XSD schema loading completed');
 
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
+      fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
+        type: fp.FileType.custom,
         allowedExtensions: ['arxml', 'xml'],
       );
       print('DEBUG: File picker result: ${result?.files.length ?? 0} files');
@@ -298,7 +377,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     // Load default XSD schema if not already loaded
     await _loadXsdSchema();
 
-    String? outputFile = await FilePicker.platform.saveFile(
+    String? outputFile = await fp.FilePicker.platform.saveFile(
       dialogTitle: 'Please select where to save the new file:',
       fileName: 'new_file.arxml',
     );
@@ -406,9 +485,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       // Per-file auto-detect schema
       XsdParser? xsdForTab = _currentXsdParser;
       String? xsdPath = _currentXsdPath;
-      final detectedSchema = content != null
-          ? await _detectSchemaPathFromArxml(content)
-          : null;
+      final detectedSchema =
+          content != null ? await _detectSchemaPathFromArxml(content) : null;
       if (detectedSchema != null) {
         try {
           final xsdContent = await File(detectedSchema).readAsString();
@@ -490,6 +568,23 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     if (idx == -1) return;
     final updated = List<FileTabState>.from(state);
     updated[idx] = updated[idx].copyWith(isDirty: true);
+    state = updated;
+  }
+
+  Future<void> resetXsdForActiveTabToSession() async {
+    // Ensure session schema is loaded
+    await _loadXsdSchema();
+    final activeIndex = _ref.read(activeTabIndexProvider);
+    if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) return;
+    final updated = [...state];
+    final tab = updated[activeIndex];
+    updated[activeIndex] = FileTabState(
+      path: tab.path,
+      treeStateProvider: tab.treeStateProvider,
+      xsdParser: _currentXsdParser,
+      xsdPath: _currentXsdPath,
+      isDirty: tab.isDirty,
+    );
     state = updated;
   }
 }
@@ -589,6 +684,7 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
   final ItemScrollController itemScrollController = ItemScrollController();
   final ItemPositionsListener itemPositionsListener =
       ItemPositionsListener.create();
+  bool _workspaceDragOver = false; // drag-highlight state for Workspace view
 
   void _syncTabController(List<FileTabState> tabs, int activeTabIndex) {
     print(
@@ -616,7 +712,8 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
       }
     } else if (_tabController != null) {
       final safeActiveIndex = activeTabIndex.clamp(0, tabs.length - 1);
-      print('DEBUG: Updating existing TabController index to: $safeActiveIndex');
+      print(
+          'DEBUG: Updating existing TabController index to: $safeActiveIndex');
       if (_tabController!.index != safeActiveIndex) {
         _tabController!.animateTo(safeActiveIndex);
       }
@@ -639,12 +736,11 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
     final diagnosticsOn = ref.watch(diagnosticsProvider);
     final liveValidationOn = ref.watch(liveValidationProvider);
     final workspaceIndex = ref.watch(workspaceIndexProvider);
+    final navIndex = ref.watch(navRailIndexProvider);
+    final issues = ref.watch(validationIssuesProvider);
 
     // Keep TabController in sync with providers
     _syncTabController(tabs, activeIndex);
-
-    final activeTreeState =
-        activeTab != null ? ref.watch(activeTab.treeStateProvider) : null;
 
     // Consume any pending scroll request (from go-to-definition)
     final pendingScrollIndex = ref.watch(scrollToIndexProvider);
@@ -686,13 +782,36 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
             tooltip: 'Save All',
             onPressed: notifier.saveAllFiles,
           ),
+          if (activeTab != null && activeTab.xsdPath != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Tooltip(
+                message:
+                    'Schema: ${activeTab.xsdPath!.split(Platform.pathSeparator).last}',
+                child: ActionChip(
+                  label: Text(
+                      activeTab.xsdPath!.split(Platform.pathSeparator).last,
+                      style: const TextStyle(color: Colors.white)),
+                  avatar: const Icon(Icons.rule, size: 16, color: Colors.white),
+                  backgroundColor: Colors.white24,
+                  onPressed: notifier.pickXsdForActiveTab,
+                ),
+              ),
+            ),
+          if (activeTab != null && activeTab.xsdPath != null)
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              onPressed: () => notifier.resetXsdForActiveTabToSession(),
+              icon: const Icon(Icons.undo, size: 16),
+              label: const Text('Use session XSD'),
+            ),
           IconButton(
-               icon: const Icon(Icons.folder_open),
-               tooltip: 'Open Workspace (index only, no tabs)',
-               onPressed: () => ref
-                   .read(workspaceIndexProvider.notifier)
-                   .pickAndIndexWorkspace(),
-           ),
+            icon: const Icon(Icons.folder_open),
+            tooltip: 'Open Workspace (index only, no tabs)',
+            onPressed: () => ref
+                .read(workspaceIndexProvider.notifier)
+                .pickAndIndexWorkspace(),
+          ),
           IconButton(
               icon: const Icon(Icons.save), onPressed: notifier.saveActiveFile),
           IconButton(
@@ -746,7 +865,9 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
                 final tree = ref.read(activeTab.treeStateProvider);
                 final parser = activeTab.xsdParser!;
                 final validator = const ArxmlValidator();
-                final issues = validator.validate(tree.rootNodes, parser);
+                final opts = ref.read(validationOptionsProvider);
+                final issues =
+                    validator.validate(tree.rootNodes, parser, options: opts);
                 ref.read(validationIssuesProvider.notifier).state = issues;
                 await showDialog(
                   context: context,
@@ -772,55 +893,50 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
                     ),
                     actions: [
                       TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Close')),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Close'),
+                      ),
                     ],
                   ),
                 );
               },
             ),
+          // Validation count + quick switch
           IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              if (activeTreeState != null) {
-                showSearch(
-                  context: context,
-                  delegate: CustomSearchDelegate(activeTreeState),
-                ).then((nodeId) {
-                  if (nodeId != null && activeTab != null) {
-                    final treeNotifier =
-                        ref.read(activeTab.treeStateProvider.notifier);
-                    treeNotifier.expandUntilNode(nodeId);
-                    final treeState = ref.read(activeTab.treeStateProvider);
-                    final index = treeState.visibleNodes
-                        .indexWhere((n) => n.id == nodeId);
-                    if (index != -1) {
-                      itemScrollController.scrollTo(
-                        index: index,
-                        duration: const Duration(milliseconds: 400),
-                        curve: Curves.easeInOut,
-                      );
-                    }
-                  }
-                });
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.unfold_less),
-            onPressed: () {
-              if (activeTab != null) {
-                ref.read(activeTab.treeStateProvider.notifier).collapseAll();
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.unfold_more),
-            onPressed: () {
-              if (activeTab != null) {
-                ref.read(activeTab.treeStateProvider.notifier).expandAll();
-              }
-            },
+            tooltip: issues.isEmpty
+                ? 'No validation issues'
+                : 'Validation issues: ${issues.length} — open results',
+            onPressed: () => ref.read(navRailIndexProvider.notifier).state = 2,
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.rule_folder_outlined),
+                if (issues.isNotEmpty)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints:
+                          const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Center(
+                        child: Text(
+                          issues.length > 99 ? '99+' : '${issues.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
         bottom: PreferredSize(
@@ -858,7 +974,8 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
                                               .last,
                                           style: TextStyle(
                                             color: Colors.white,
-                                            fontWeight: _tabController != null &&
+                                            fontWeight: _tabController !=
+                                                        null &&
                                                     tabs.indexOf(tab) ==
                                                         _tabController!.index
                                                 ? FontWeight.w700
@@ -890,90 +1007,976 @@ class _MyHomePageState extends ConsumerState<_InnerHomePage>
                 ),
         ),
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : activeTab != null && _tabController != null
-              ? Column(
-                  children: [
-                    if (diagnosticsOn && activeTab.xsdParser != null)
-                      Container(
-                        height: 100,
-                        color: Colors.black87,
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: ListView(
-                            children: activeTab.xsdParser!
-                                .getLastResolutionTrace()
-                                .map((e) => Text(e,
-                                    style: const TextStyle(
-                                        color: Colors.white70, fontSize: 12)))
-                                .toList(),
+      body: Row(
+        children: [
+          NavigationRail(
+            selectedIndex: navIndex,
+            onDestinationSelected: (i) =>
+                ref.read(navRailIndexProvider.notifier).state = i,
+            labelType: NavigationRailLabelType.selected,
+            useIndicator: true,
+            indicatorShape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            destinations: const [
+              NavigationRailDestination(
+                icon: Icon(Icons.article_outlined),
+                selectedIcon: Icon(Icons.article),
+                label: Text('Editor'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.folder_outlined),
+                selectedIcon: Icon(Icons.folder),
+                label: Text('Workspace'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.rule_outlined),
+                selectedIcon: Icon(Icons.rule),
+                label: Text('Validation'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: Text('Settings'),
+              ),
+            ],
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            child: Builder(
+              builder: (context) {
+                if (navIndex == 1) {
+                  // Workspace View with desktop drag-and-drop
+                  final files = workspaceIndex.targets.values
+                      .expand((list) => list.map((t) => t.filePath))
+                      .toSet()
+                      .toList()
+                    ..sort();
+                  if (workspaceIndex.rootDir == null) {
+                    return Center(
+                      child: TextButton.icon(
+                        onPressed: () => ref
+                            .read(workspaceIndexProvider.notifier)
+                            .pickAndIndexWorkspace(),
+                        icon: const Icon(Icons.folder_open),
+                        label: const Text('Open Workspace'),
+                      ),
+                    );
+                  }
+                  return DropTarget(
+                    onDragEntered: (_) =>
+                        setState(() => _workspaceDragOver = true),
+                    onDragExited: (_) =>
+                        setState(() => _workspaceDragOver = false),
+                    onDragDone: (details) async {
+                      setState(() => _workspaceDragOver = false);
+                      final dropped = details.files
+                          .map((f) => f.path)
+                          .whereType<String>()
+                          .toList();
+                      if (dropped.isEmpty) return;
+
+                      bool isArxml(String path) {
+                        final ext = path.toLowerCase();
+                        return ext.endsWith('.arxml') || ext.endsWith('.xml');
+                      }
+
+                      Future<List<String>> collectArxml(String dir) async {
+                        final out = <String>[];
+                        try {
+                          final directory = Directory(dir);
+                          if (!directory.existsSync()) return out;
+                          await for (final ent in directory.list(
+                              recursive: true, followLinks: false)) {
+                            if (ent is File && isArxml(ent.path))
+                              out.add(ent.path);
+                          }
+                        } catch (_) {}
+                        return out;
+                      }
+
+                      final dirs = <String>[];
+                      final filePaths = <String>[];
+                      for (final pth in dropped) {
+                        final t =
+                            FileSystemEntity.typeSync(pth, followLinks: false);
+                        if (t == FileSystemEntityType.directory) {
+                          dirs.add(pth);
+                        } else if (t == FileSystemEntityType.file) {
+                          if (isArxml(pth)) filePaths.add(pth);
+                        }
+                      }
+
+                      final idxNotifier =
+                          ref.read(workspaceIndexProvider.notifier);
+                      final root = ref.read(workspaceIndexProvider).rootDir;
+
+                      if (dirs.isNotEmpty) {
+                        if (root == null) {
+                          // Set workspace to first dropped folder
+                          await idxNotifier.indexFolder(dirs.first);
+                          // Add extras from remaining folders/files
+                          final extras = <String>[];
+                          for (int i = 1; i < dirs.length; i++) {
+                            extras.addAll(await collectArxml(dirs[i]));
+                          }
+                          extras.addAll(filePaths);
+                          if (extras.isNotEmpty)
+                            await idxNotifier.addFiles(extras);
+                        } else {
+                          final toAdd = <String>[];
+                          for (final d in dirs) {
+                            toAdd.addAll(await collectArxml(d));
+                          }
+                          toAdd.addAll(filePaths);
+                          if (toAdd.isNotEmpty)
+                            await idxNotifier.addFiles(toAdd);
+                        }
+                      } else {
+                        // Only files were dropped
+                        if (root == null) {
+                          final commonDir = p.dirname(filePaths.first);
+                          await idxNotifier.indexFolder(commonDir);
+                          // Optionally add specific files; indexFolder already covers commonDir
+                        } else {
+                          await idxNotifier.addFiles(filePaths);
+                        }
+                      }
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                'Added ${dirs.length} folder(s), ${filePaths.length} file(s) to index'),
+                            duration: const Duration(seconds: 2),
                           ),
-                        ),
-                      ),
-                    if (workspaceIndex.indexing)
-                      LinearProgressIndicator(
-                        minHeight: 2,
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
-                    if (workspaceIndex.rootDir != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8.0, vertical: 4),
-                        child: Row(
+                        );
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        // Existing Workspace column content
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.folder,
-                                size: 16, color: Colors.white70),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                '${workspaceIndex.rootDir} — files: ${workspaceIndex.filesIndexed}${workspaceIndex.lastScan != null ? ' — last: ${workspaceIndex.lastScan}' : ''}',
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 12),
-                                overflow: TextOverflow.ellipsis,
+                            if (workspaceIndex.indexing)
+                              LinearProgressIndicator(
+                                minHeight: 4,
+                                value: workspaceIndex.progress == 0
+                                    ? null
+                                    : workspaceIndex.progress,
+                                color: Theme.of(context).colorScheme.secondary,
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8.0, vertical: 4),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.folder, size: 16),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      '${workspaceIndex.rootDir} — files: ${workspaceIndex.filesIndexed}${workspaceIndex.lastScan != null ? ' — last: ${workspaceIndex.lastScan}' : ''}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: () => ref
+                                        .read(workspaceIndexProvider.notifier)
+                                        .refresh(),
+                                    icon: const Icon(Icons.refresh, size: 14),
+                                    label: const Text('Refresh'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  TextButton.icon(
+                                    onPressed: () async {
+                                      final res = await fp.FilePicker.platform
+                                          .pickFiles(
+                                              allowMultiple: true,
+                                              type: fp.FileType.custom,
+                                              allowedExtensions: [
+                                            'arxml',
+                                            'xml'
+                                          ]);
+                                      if (res != null) {
+                                        final paths = res.files
+                                            .where((f) => f.path != null)
+                                            .map((f) => f.path!)
+                                            .toList();
+                                        await ref
+                                            .read(
+                                                workspaceIndexProvider.notifier)
+                                            .addFiles(paths);
+                                      }
+                                    },
+                                    icon: const Icon(Icons.add, size: 14),
+                                    label: const Text('Add files'),
+                                  ),
+                                ],
                               ),
                             ),
-                            TextButton.icon(
-                              onPressed: () => ref
-                                  .read(workspaceIndexProvider.notifier)
-                                  .refresh(),
-                              icon: const Icon(Icons.refresh,
-                                  size: 14, color: Colors.white70),
-                              label: const Text('Refresh',
-                                  style: TextStyle(color: Colors.white70)),
-                            )
+                            if (workspaceIndex.fileStatus.isNotEmpty)
+                              Expanded(
+                                child: ListView(
+                                  children: workspaceIndex.fileStatus.entries
+                                      .map((e) {
+                                    final st = e.value;
+                                    IconData icon;
+                                    Color color;
+                                    switch (st) {
+                                      case IndexStatus.queued:
+                                        icon = Icons.schedule;
+                                        color = Colors.grey;
+                                        break;
+                                      case IndexStatus.processing:
+                                        icon = Icons.hourglass_top;
+                                        color = Colors.amber;
+                                        break;
+                                      case IndexStatus.processed:
+                                        icon = Icons.check_circle_outline;
+                                        color = Colors.green;
+                                        break;
+                                      case IndexStatus.error:
+                                        icon = Icons.error_outline;
+                                        color = Colors.redAccent;
+                                        break;
+                                    }
+                                    return ListTile(
+                                      dense: true,
+                                      leading: Icon(icon, color: color),
+                                      title: Text(e.key
+                                          .split(Platform.pathSeparator)
+                                          .last),
+                                      subtitle: Text(e.key,
+                                          overflow: TextOverflow.ellipsis),
+                                      trailing: Text(st.name),
+                                    );
+                                  }).toList(),
+                                ),
+                              )
+                            else
+                              const Divider(height: 1),
+                            Expanded(
+                              child: files.isEmpty
+                                  ? const Center(
+                                      child: Text(
+                                          'No ARXML files indexed yet\nDrag and drop files/folders here',
+                                          textAlign: TextAlign.center),
+                                    )
+                                  : ListView.builder(
+                                      itemCount: files.length,
+                                      itemBuilder: (context, i) {
+                                        final fp = files[i];
+                                        return ListTile(
+                                          dense: true,
+                                          title: Text(fp
+                                              .split(Platform.pathSeparator)
+                                              .last),
+                                          subtitle: Text(fp,
+                                              overflow: TextOverflow.ellipsis),
+                                          leading:
+                                              const Icon(Icons.description),
+                                          onTap: () => ref
+                                              .read(fileTabsProvider.notifier)
+                                              .openFileAndNavigate(fp,
+                                                  shortNamePath: const []),
+                                        );
+                                      },
+                                    ),
+                            ),
+                          ],
+                        ),
+                        if (_workspaceDragOver)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.blueAccent.withOpacity(0.08),
+                                  border: Border.all(
+                                      color: Colors.blueAccent.withOpacity(0.7),
+                                      width: 2),
+                                ),
+                                child: const Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.file_download,
+                                          size: 36, color: Colors.blueAccent),
+                                      SizedBox(height: 8),
+                                      Text('Drop files or folders to index',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.blueAccent)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                } else if (navIndex == 2) {
+                  // Validation View
+                  final issues = ref.watch(validationIssuesProvider);
+                  final filter = ref.watch(validationFilterProvider);
+                  final selectedSeverities = ref.watch(severityFiltersProvider);
+                  final filtered = (filter.trim().isEmpty
+                          ? issues
+                          : issues
+                              .where((i) =>
+                                  i.message
+                                      .toLowerCase()
+                                      .contains(filter.toLowerCase()) ||
+                                  i.path
+                                      .toLowerCase()
+                                      .contains(filter.toLowerCase()))
+                              .toList())
+                      .where((i) => selectedSeverities.contains(i.severity))
+                      .toList();
+                  if (issues.isEmpty) {
+                    return const Center(
+                        child: Text('No validation issues to display'));
+                  }
+                  final selectedIdx = ref.watch(selectedIssueIndexProvider);
+                  return Stack(
+                    children: [
+                      FocusableActionDetector(
+                        shortcuts: <LogicalKeySet, Intent>{
+                          LogicalKeySet(LogicalKeyboardKey.arrowDown):
+                              const NextFocusIntent(),
+                          LogicalKeySet(LogicalKeyboardKey.arrowUp):
+                              const PreviousFocusIntent(),
+                          LogicalKeySet(LogicalKeyboardKey.keyN):
+                              const NextFocusIntent(),
+                          LogicalKeySet(LogicalKeyboardKey.keyP):
+                              const PreviousFocusIntent(),
+                        },
+                        actions: <Type, Action<Intent>>{
+                          NextFocusIntent: CallbackAction<NextFocusIntent>(
+                            onInvoke: (intent) {
+                              final next = ((selectedIdx ?? -1) + 1)
+                                  .clamp(0, filtered.length - 1);
+                              ref
+                                  .read(selectedIssueIndexProvider.notifier)
+                                  .state = next;
+                              return null;
+                            },
+                          ),
+                          PreviousFocusIntent:
+                              CallbackAction<PreviousFocusIntent>(
+                            onInvoke: (intent) {
+                              final prev =
+                                  ((selectedIdx ?? filtered.length) - 1)
+                                      .clamp(0, filtered.length - 1);
+                              ref
+                                  .read(selectedIssueIndexProvider.notifier)
+                                  .state = prev;
+                              return null;
+                            },
+                          ),
+                        },
+                        child: Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: TextField(
+                                decoration: const InputDecoration(
+                                  prefixIcon: Icon(Icons.search),
+                                  hintText: 'Filter issues by text or path',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                ),
+                                onChanged: (v) {
+                                  ref
+                                      .read(validationFilterProvider.notifier)
+                                      .state = v;
+                                  ref
+                                      .read(selectedIssueIndexProvider.notifier)
+                                      .state = null;
+                                },
+                              ),
+                            ),
+                            // Severity chips
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8.0),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                children: [
+                                  _severityChip(
+                                      ref,
+                                      'Errors',
+                                      ValidationSeverity.error,
+                                      Colors.redAccent),
+                                  _severityChip(ref, 'Warnings',
+                                      ValidationSeverity.warning, Colors.amber),
+                                  _severityChip(
+                                      ref,
+                                      'Info',
+                                      ValidationSeverity.info,
+                                      Colors.blueAccent),
+                                ],
+                              ),
+                            ),
+                            if (selectedIdx != null &&
+                                selectedIdx >= 0 &&
+                                selectedIdx < filtered.length)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.link, size: 14),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        filtered[selectedIdx].path,
+                                        style: const TextStyle(
+                                            fontFamily: 'monospace'),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.copy, size: 14),
+                                      label: const Text('Copy path'),
+                                      onPressed: () {
+                                        Clipboard.setData(ClipboardData(
+                                            text: filtered[selectedIdx].path));
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text('Path copied')),
+                                        );
+                                      },
+                                    )
+                                  ],
+                                ),
+                              ),
+                            const Divider(height: 1),
+                            Expanded(
+                              child: ListView.builder(
+                                itemCount: filtered.length,
+                                itemBuilder: (context, i) {
+                                  final issue = filtered[i];
+                                  final iconData =
+                                      issue.severity == ValidationSeverity.error
+                                          ? Icons.error_outline
+                                          : issue.severity ==
+                                                  ValidationSeverity.warning
+                                              ? Icons.warning_amber_outlined
+                                              : Icons.info_outline;
+                                  final iconColor =
+                                      issue.severity == ValidationSeverity.error
+                                          ? Colors.redAccent
+                                          : issue.severity ==
+                                                  ValidationSeverity.warning
+                                              ? Colors.amber
+                                              : Colors.blueAccent;
+                                  final selected = i == selectedIdx;
+                                  return ListTile(
+                                    selected: selected,
+                                    selectedTileColor: Theme.of(context)
+                                        .colorScheme
+                                        .secondaryContainer
+                                        .withOpacity(0.2),
+                                    leading: Icon(iconData, color: iconColor),
+                                    title: Text(issue.message),
+                                    subtitle: Text(issue.path),
+                                    onTap: () {
+                                      ref
+                                          .read(selectedIssueIndexProvider
+                                              .notifier)
+                                          .state = i;
+                                      // Navigate to the selected issue's path
+                                      final tab = ref.read(activeTabProvider);
+                                      if (tab == null) return;
+                                      final parts = issue.path
+                                          .split('/')
+                                          .where((e) => e.isNotEmpty)
+                                          .toList();
+                                      int? targetId;
+                                      void search(ElementNode node, int idx) {
+                                        if (idx >= parts.length) {
+                                          targetId = node.id;
+                                          return;
+                                        }
+                                        for (final c in node.children) {
+                                          if (c.elementText == parts[idx]) {
+                                            search(c, idx + 1);
+                                            if (targetId != null) return;
+                                          } else {
+                                            search(c, idx);
+                                            if (targetId != null) return;
+                                          }
+                                        }
+                                      }
+
+                                      final tree =
+                                          ref.read(tab.treeStateProvider);
+                                      for (final r in tree.rootNodes) {
+                                        if (targetId != null) break;
+                                        if (parts.isEmpty ||
+                                            r.elementText == parts.first) {
+                                          search(r, parts.isEmpty ? 0 : 1);
+                                        }
+                                      }
+                                      if (targetId != null) {
+                                        final notifier = ref.read(
+                                            tab.treeStateProvider.notifier);
+                                        notifier.expandUntilNode(targetId!);
+                                        final updated =
+                                            ref.read(tab.treeStateProvider);
+                                        final index = updated.visibleNodes
+                                            .indexWhere(
+                                                (n) => n.id == targetId);
+                                        if (index != -1) {
+                                          itemScrollController.scrollTo(
+                                            index: index,
+                                            duration: const Duration(
+                                                milliseconds: 400),
+                                            curve: Curves.easeInOut,
+                                          );
+                                          // switch to Editor view
+                                          ref
+                                              .read(
+                                                  navRailIndexProvider.notifier)
+                                              .state = 0;
+                                        }
+                                      }
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController!,
-                        children: tabs.map((tab) {
-                          return Consumer(builder: (context, ref, child) {
-                            final treeState = ref.watch(tab.treeStateProvider);
-                            return ScrollablePositionedList.builder(
-                              itemScrollController: itemScrollController,
-                              itemPositionsListener: itemPositionsListener,
-                              itemCount: treeState.visibleNodes.length,
-                              itemBuilder: (context, index) {
-                                final node = treeState.visibleNodes[index];
-                                return ElementNodeWidget(
-                                  node: node,
-                                  xsdParser: tab.xsdParser,
-                                  key: ValueKey(node.id),
-                                  treeStateProvider: tab.treeStateProvider,
-                                );
-                              },
-                            );
-                          });
-                        }).toList(),
+                      // Right-side gutter with aggregate marks
+                      Positioned(
+                        right: 2,
+                        top: 0,
+                        bottom: 0,
+                        width: 6,
+                        child: _ValidationGutter(issues: filtered),
                       ),
-                    ),
-                  ],
-                )
-              : const Center(
-                  child: Text("Open a file to begin"),
-                ),
+                    ],
+                  );
+                } else if (navIndex == 3) {
+                  // Settings View
+                  final opts = ref.watch(validationOptionsProvider);
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      SwitchListTile(
+                        title: const Text('Live validation'),
+                        subtitle: const Text('Validate while editing'),
+                        value: ref.watch(liveValidationProvider),
+                        onChanged: (v) {
+                          ref.read(liveValidationProvider.notifier).state = v;
+                          if (v) {
+                            ref
+                                .read(validationSchedulerProvider.notifier)
+                                .schedule(
+                                    delay: const Duration(milliseconds: 100));
+                          }
+                        },
+                      ),
+                      const Divider(),
+                      SwitchListTile(
+                        title: const Text('Verbose XSD diagnostics'),
+                        subtitle: const Text('Show parser resolution trace'),
+                        value: ref.watch(diagnosticsProvider),
+                        onChanged: (_) {
+                          ref
+                              .read(fileTabsProvider.notifier)
+                              .toggleDiagnostics();
+                        },
+                      ),
+                      const Divider(),
+                      SwitchListTile(
+                        title: const Text('Ignore ADMIN-DATA in validation'),
+                        subtitle: const Text(
+                            'Omit ADMIN-DATA subtree from validation results'),
+                        value: opts.ignoreAdminData,
+                        onChanged: (v) {
+                          ref.read(validationOptionsProvider.notifier).state =
+                              ValidationOptions(ignoreAdminData: v);
+                          // re-run validation if live is on
+                          ref
+                              .read(validationSchedulerProvider.notifier)
+                              .schedule(
+                                delay: const Duration(milliseconds: 100),
+                              );
+                        },
+                      ),
+                      const Divider(),
+                      SwitchListTile(
+                        title: const Text('Show Resource HUD (bottom-right)'),
+                        subtitle: const Text(
+                            'Displays app memory and model size (debug estimates)'),
+                        value: ref.watch(showResourceHudProvider),
+                        onChanged: (v) => ref
+                            .read(showResourceHudProvider.notifier)
+                            .state = v,
+                      ),
+                    ],
+                  );
+                }
+
+                // Editor View (default)
+                return isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : activeTab != null && _tabController != null
+                        ? Stack(
+                            children: [
+                              Column(
+                                children: [
+                                  if (diagnosticsOn &&
+                                      activeTab.xsdParser != null)
+                                    Container(
+                                      height: 100,
+                                      color: Colors.black87,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: ListView(
+                                          children: activeTab.xsdParser!
+                                              .getLastResolutionTrace()
+                                              .map((e) => Text(e,
+                                                  style: const TextStyle(
+                                                    color: Colors.white70,
+                                                  )))
+                                              .toList(),
+                                        ),
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: Column(
+                                      children: [
+                                        TabBar(
+                                          controller: _tabController!,
+                                          isScrollable: true,
+                                          indicatorColor: Colors.transparent,
+                                          tabs: tabs
+                                              .map((tab) => Tab(
+                                                    child: Row(
+                                                      children: [
+                                                        AnimatedContainer(
+                                                          duration:
+                                                              const Duration(
+                                                                  milliseconds:
+                                                                      180),
+                                                          curve: Curves
+                                                              .easeOutCubic,
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                                  horizontal: 8,
+                                                                  vertical: 4),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: _tabController !=
+                                                                        null &&
+                                                                    tabs.indexOf(
+                                                                            tab) ==
+                                                                        _tabController!
+                                                                            .index
+                                                                ? Colors.white
+                                                                    .withOpacity(
+                                                                        0.15)
+                                                                : Colors
+                                                                    .transparent,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12),
+                                                          ),
+                                                          child: Row(
+                                                            children: [
+                                                              Text(
+                                                                tab.path
+                                                                    .split(Platform
+                                                                        .pathSeparator)
+                                                                    .last,
+                                                                style:
+                                                                    TextStyle(
+                                                                  color: Colors
+                                                                      .white,
+                                                                  fontWeight: _tabController !=
+                                                                              null &&
+                                                                          tabs.indexOf(tab) ==
+                                                                              _tabController!
+                                                                                  .index
+                                                                      ? FontWeight
+                                                                          .w700
+                                                                      : FontWeight
+                                                                          .w500,
+                                                                ),
+                                                              ),
+                                                              if (tab.isDirty)
+                                                                const Padding(
+                                                                  padding: EdgeInsets
+                                                                      .only(
+                                                                          left:
+                                                                              6.0),
+                                                                  child:
+                                                                      Tooltip(
+                                                                    message:
+                                                                        'Unsaved changes',
+                                                                    child: Icon(
+                                                                        Icons
+                                                                            .circle,
+                                                                        size: 8,
+                                                                        color: Colors
+                                                                            .amber),
+                                                                  ),
+                                                                ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        if (tab.xsdPath != null)
+                                                          const Padding(
+                                                            padding:
+                                                                EdgeInsets.only(
+                                                                    left: 6.0),
+                                                            child: Icon(
+                                                                Icons.rule,
+                                                                size: 14),
+                                                          )
+                                                      ],
+                                                    ),
+                                                  ))
+                                              .toList(),
+                                        ),
+                                        Expanded(
+                                          child: TabBarView(
+                                            controller: _tabController!,
+                                            children: tabs.map((tab) {
+                                              return Consumer(builder:
+                                                  (context, ref, child) {
+                                                final treeState = ref.watch(
+                                                    tab.treeStateProvider);
+                                                return ScrollablePositionedList
+                                                    .builder(
+                                                  itemScrollController:
+                                                      itemScrollController,
+                                                  itemPositionsListener:
+                                                      itemPositionsListener,
+                                                  itemCount: treeState
+                                                      .visibleNodes.length,
+                                                  itemBuilder:
+                                                      (context, index) {
+                                                    final node = treeState
+                                                        .visibleNodes[index];
+                                                    return ElementNodeWidget(
+                                                      node: node,
+                                                      xsdParser: tab.xsdParser,
+                                                      key: ValueKey(node.id),
+                                                      treeStateProvider:
+                                                          tab.treeStateProvider,
+                                                    );
+                                                  },
+                                                );
+                                              });
+                                            }).toList(),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // Resource HUD overlay
+                              if (ref.watch(showResourceHudProvider))
+                                Positioned(
+                                  right: 8,
+                                  bottom: 8,
+                                  child: _ResourceHud(
+                                    modelNodeCount: (() {
+                                      final tab = ref.watch(activeTabProvider);
+                                      if (tab == null) return 0;
+                                      final tree =
+                                          ref.watch(tab.treeStateProvider);
+                                      int count = 0;
+                                      void walk(ElementNode n) {
+                                        count++;
+                                        for (final c in n.children) walk(c);
+                                      }
+
+                                      for (final r in tree.rootNodes) walk(r);
+                                      return count;
+                                    })(),
+                                  ),
+                                ),
+                            ],
+                          )
+                        : const SizedBox.shrink();
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper to build a selectable severity chip
+  Widget _severityChip(
+      WidgetRef ref, String label, ValidationSeverity sev, Color color) {
+    final selected = ref.watch(severityFiltersProvider).contains(sev);
+    return FilterChip(
+      selected: selected,
+      onSelected: (v) {
+        final set = {...ref.read(severityFiltersProvider)};
+        if (v) {
+          set.add(sev);
+        } else {
+          set.remove(sev);
+        }
+        // Ensure at least one stays selected
+        if (set.isEmpty) set.add(sev);
+        ref.read(severityFiltersProvider.notifier).state = set;
+      },
+      label: Text(label),
+      selectedColor: color.withOpacity(0.2),
+      checkmarkColor: color,
+      side: BorderSide(color: color),
+    );
+  }
+}
+
+class _ValidationGutter extends StatelessWidget {
+  final List<ValidationIssue> issues;
+  const _ValidationGutter({required this.issues});
+
+  Color _colorFor(ValidationSeverity s) {
+    switch (s) {
+      case ValidationSeverity.error:
+        return Colors.redAccent;
+      case ValidationSeverity.warning:
+        return Colors.amber;
+      case ValidationSeverity.info:
+        return Colors.blueAccent;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final height = constraints.maxHeight;
+      if (height <= 0) return const SizedBox.shrink();
+      // Distribute markers along height using path depth as a heuristic
+      final buckets = <double, List<ValidationIssue>>{};
+      for (final i in issues) {
+        final segs = i.path.split('/').where((e) => e.isNotEmpty).length;
+        final y = (segs * 13) % height; // spread a bit
+        buckets.putIfAbsent(y, () => []).add(i);
+      }
+      return CustomPaint(
+        painter: _GutterPainter(buckets, _colorFor),
+      );
+    });
+  }
+}
+
+class _GutterPainter extends CustomPainter {
+  final Map<double, List<ValidationIssue>> buckets;
+  final Color Function(ValidationSeverity) colorFor;
+  _GutterPainter(this.buckets, this.colorFor);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final paint = Paint()..strokeCap = StrokeCap.round;
+    buckets.forEach((y, list) {
+      // pick top severity color
+      ValidationSeverity sev = ValidationSeverity.info;
+      for (final i in list) {
+        if (i.severity == ValidationSeverity.error) {
+          sev = ValidationSeverity.error;
+          break;
+        }
+        if (i.severity == ValidationSeverity.warning) {
+          sev = ValidationSeverity.warning;
+        }
+      }
+      paint.color = colorFor(sev);
+      paint.strokeWidth = (1.5 + (list.length - 1) * 0.6).clamp(1.5, 6.0);
+      final dy = y.clamp(0.0, size.height - 1.0);
+      canvas.drawLine(Offset(0.0, dy), Offset(w, dy), paint);
+    });
+  }
+
+  @override
+  bool shouldRepaint(covariant _GutterPainter oldDelegate) {
+    return oldDelegate.buckets != buckets;
+  }
+}
+
+class _ResourceHud extends StatefulWidget {
+  final int modelNodeCount;
+  const _ResourceHud({required this.modelNodeCount});
+  @override
+  State<_ResourceHud> createState() => _ResourceHudState();
+}
+
+class _ResourceHudState extends State<_ResourceHud> {
+  String _mem = '';
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _update();
+    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _update());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _update() async {
+    // Use platformDispatcher to get basic info when available; fallback graceful
+    try {
+      final info = WidgetsBinding.instance.platformDispatcher;
+      final estimates = <String>[];
+      if (info.views.isNotEmpty) {
+        // Add a simple marker to show activity
+        estimates.add('views:${info.views.length}');
+      }
+      setState(() {
+        _mem =
+            'mem: ~N/A  |  nodes: ${widget.modelNodeCount}  |  ${estimates.join(' ')}';
+      });
+    } catch (_) {
+      setState(() {
+        _mem = 'nodes: ${widget.modelNodeCount}';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: DefaultTextStyle(
+        style: const TextStyle(color: Colors.white70, fontSize: 11),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.speed, size: 14, color: Colors.white70),
+            const SizedBox(width: 6),
+            Text(_mem),
+          ],
+        ),
+      ),
     );
   }
 }

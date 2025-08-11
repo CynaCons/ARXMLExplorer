@@ -1,18 +1,36 @@
 import 'package:arxml_explorer/elementnode.dart';
 import 'package:arxml_explorer/xsd_parser.dart';
 
+enum ValidationSeverity { error, warning, info }
+
 class ValidationIssue {
   final String path;
   final String message;
   final List<String> suggestions;
-  ValidationIssue(
-      {required this.path, required this.message, this.suggestions = const []});
+  final int? nodeId; // precise node mapping when available
+  final ValidationSeverity severity;
+  ValidationIssue({
+    required this.path,
+    required this.message,
+    this.suggestions = const [],
+    this.nodeId,
+    this.severity = ValidationSeverity.error,
+  });
+}
+
+class ValidationOptions {
+  final bool ignoreAdminData;
+  const ValidationOptions({this.ignoreAdminData = false});
 }
 
 class ArxmlValidator {
   const ArxmlValidator();
 
-  List<ValidationIssue> validate(List<ElementNode> roots, XsdParser parser) {
+  List<ValidationIssue> validate(
+    List<ElementNode> roots,
+    XsdParser parser, {
+    ValidationOptions options = const ValidationOptions(),
+  }) {
     final issues = <ValidationIssue>[];
 
     // Build parent pointers locally (ElementNode.parent is set by state normally)
@@ -38,6 +56,11 @@ class ArxmlValidator {
     }
 
     void traverse(ElementNode node) {
+      // Optionally skip ADMIN-DATA subtree entirely
+      if (options.ignoreAdminData && node.elementText == 'ADMIN-DATA') {
+        return;
+      }
+
       // Skip pure text leaf nodes
       final isTextLeaf = node.children.isEmpty &&
           node.elementText.trim().isNotEmpty &&
@@ -53,6 +76,8 @@ class ArxmlValidator {
             message:
                 'Element "${node.elementText}" is not allowed under "$parentTag"',
             suggestions: suggestions,
+            nodeId: node.id,
+            severity: ValidationSeverity.error,
           ));
         }
       }

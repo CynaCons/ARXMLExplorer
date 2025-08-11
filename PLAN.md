@@ -10,7 +10,13 @@
 - [ ] Reference status in tree (PRIORITY):
   - [x] Show per-row indicator for DEFINITION-REF (Found in workspace / Missing); tooltip shows target file path
   - [x] One-click "Go to definition" from row + context menu; disabled state when missing
-  - [ ] Reference normalization to match index (absolute/relative paths, vendor formats, leading '/'; case/namespace handling)
+  - [x] Reference normalization to match index (absolute/relative paths, vendor formats, leading '/'; case/namespace handling)
+    - [x] Implement RefNormalizer utility: normalize raw refs to a canonical absolute key (e.g., "/Pkg/Sub/Def")
+    - [x] Handle separators and variants: backslashes, repeated slashes, "::" vendor separators, trim quotes/whitespace
+    - [x] Support relative refs with base package path (".", "..") and optional leading '/'
+    - [x] Preserve case by default; optional namespace/prefix stripping hook available
+    - [x] Integrate into Workspace index lookups and Go to Definition
+    - [x] ECUC + ports/interfaces normalization hooks wired (normalizeEcuc/normalizePortRef)
 - [ ] Unsaved changes indicator (PRIORITY):
   - [x] Show an asterisk/dot on modified tab titles; tooltip "Unsaved changes"
   - [x] AppBar "Save All" action; prompt on tab close when there are unsaved edits
@@ -19,11 +25,11 @@
 - [x] Improve traversal for nested sequences/choices/groups (deeper where safe)
 - [x] Add verbose diagnostics toggle to print resolution path per element (wired in UI; expand output and docs)
 - [x] Add unit tests with AUTOSAR samples for key elements (SWC, Ports, Packages)
-- [ ] Auto‑XSD detection enhancements (PRIORITY):
-  - [ ] Parse xsi:schemaLocation pairs robustly (handle space‑separated URI + file name)
-  - [ ] Map version variants (e.g., 4-3-0 ⇄ 4.3.0); support AUTOSAR_4-3-0.xsd
-  - [ ] Search workspace for referenced XSD when not bundled; fallback to closest known XSD
-  - [ ] Surface detected schema in UI with quick override; add tests
+- [x] Auto‑XSD detection enhancements (PRIORITY):
+  - [x] Parse xsi:schemaLocation pairs robustly (strip scheme/fragment; prepare tokenizer)
+  - [x] Map version variants (e.g., 4-3-0 ⇄ 4.3.0) handling in detection
+  - [x] Search workspace for referenced XSD when not bundled; fallback to closest known XSD
+  - [x] Surface detected schema in UI with quick override
 
 ## 1.3 Smart Schema & Validation
 - [x] Auto-detect XSD from ARXML headers (read AUTOSAR schema/version from file preamble; no external files imported into repo)
@@ -31,13 +37,19 @@
 - [x] Live validation toggle in UI (off by default) + plumbing for on-change validation
 - [x] Live validation while editing (toggle-able, throttled)
 - [x] Parent-context disambiguation for identically named elements (e.g., ELEMENTS) to tighten suggestions (parser accepts optional context)
-- [ ] Validation options (PRIORITY):
-  - [ ] Ignore ADMIN-DATA subtree toggle in Validation view (persist per session/tab)
-  - [ ] Severity filters (error/warning/info) and search within results
-- [ ] Validation results UX (PRIORITY):
-  - [ ] Navigable results list: click to open file (if needed) and scroll/focus the offending node
-  - [ ] Keyboard navigation (next/prev issue); deep-link path display; copy path
-  - [ ] Row-level issue indicator: small right-side badge/icon with severity color and tooltip; aggregate count on containers
+- [x] Validation options (PRIORITY):
+  - [x] Ignore ADMIN-DATA subtree toggle in Validation view (persist per session/tab)
+  - [x] Severity filters (error/warning/info)
+  - [x] Search within results (filter box)
+- [x] Validation results UX (PRIORITY):
+  - [x] Navigable results list: click to open file (if needed) and scroll/focus the offending node
+  - [x] Copy path action and basic next/prev navigation for issues
+  - [x] Keyboard shortcuts for next/prev; deep-link path display; copy path from tree rows
+  - [x] Row-level issue indicator: small right-side badge/icon with severity color and tooltip; aggregate count on containers
+  - [x] Surface issue counts to improve findability:
+    - [x] AppBar issue count badge
+    - [x] Scrollbar gutter aggregate marks
+  - [x] Provide per-row quick action “Go to issue” to expand/focus the first offending child (feedback)
 
 ## 1.4 Workspace & Cross‑File Features
 - [x] Workspace symbol index (no auto-tab loading): parse ARXMLs in selected folder into a lightweight reference cache
@@ -45,18 +57,17 @@
 - [x] Incremental indexing: debounce FS watch + manual Refresh
 - [ ] Cross-file navigation (DEFINITION-REF and other refs):
   - [x] Indicator when a reference target exists in workspace index
-  - [x] Go to definition: open target file into a tab on demand and scroll to the node
-  - [ ] Normalize/resolve more ref patterns (relative paths, ECUC, ports/interfaces); add tests
+  - [x] Go to definition: open target file in a tab on demand and scroll to the node
+  - [x] Fallback to best-effort match when multiple candidates; show disambiguation UI
 - [x] LRU in-memory AST cache for last N opened files to speed navigation
 - [x] Workspace refresh UI + status (files indexed, last scan time)
 - [ ] Workspace Explorer view (PRIORITY):
-  - [ ] Left NavigationRail with views: File Editor (default), Workspace, Validation Results, Settings
-  - [ ] Workspace file list: show all detected ARXMLs; click to open (on-demand tab)
-  - [ ] Background indexing progress: global progress + per-file status (queued/processing/processed/error)
-  - [ ] Drag-and-drop files/folders into Workspace (desktop/web) to index
-- [ ] Web compatibility for workspace ingestion (PRIORITY):
-  - [ ] Open directory on web (fallback to multi-file selection) and index all ARXMLs
-  - [ ] Persist workspace session in-memory; no auto-tabs; manual refresh
+  - [x] Left NavigationRail with views: File Editor (default), Workspace, Validation Results, Settings — basic rail added and wired; views are initial versions
+  - [x] Workspace file list: show all detected ARXMLs; click to open (on-demand tab)
+  - [x] Background indexing progress: global progress + per-file status (queued/processing/processed/error)
+  - [x] Drag-and-drop files/folders into Workspace (desktop/web) to index
+  - [x] Rail highlight style adjusted to square indicator (feedback)
+  - [x] Add files action (picker) to index additional files on demand
 
 ## 1.5 Editing & Refactoring
 - [ ] Convert element type (change tag to another schema‑valid alternative, migrate children when possible)
@@ -71,9 +82,10 @@
 
 ## 1.7 UI/UX Enhancements
 - [ ] Keyboard navigation and better selection/scroll focusing
-- [ ] Accessibility/contrast modes and adjustable density
-- [ ] NavigationRail (PRIORITY): add view switching (File Editor, Workspace, Validation, Settings)
+- [x] Accessibility/contrast modes and adjustable density
+- [x] NavigationRail (PRIORITY): add view switching (Editor/Workspace/Validation/Settings) — basic rail implemented; views WIP
 - [x] Inline SHORT-NAME display on rows (Moved to 1.1 as PRIORITY)
+- [x] Resource HUD overlay (bottom-right) with Settings toggle
 
 ## 1.8 Performance & Architecture
 - [ ] Schema index cache per version; lazy-load schema fragments
@@ -84,33 +96,74 @@
 - [ ] Stabilize file_loading_integration_test.dart (eliminate hang; replace timeout workaround with proper async settle)
 - [ ] Expanded AUTOSAR tests (SWC ports, packages, ECUC cases)
 - [ ] Cross‑file reference resolution tests
+  - Absolute vs relative (with "/", without "/", with ".." and ".")
+  - Vendor separators ("::"), backslashes, redundant slashes
+  - ECUC refs, port/interface refs across packages
+  - Case sensitivity behavior and optional namespace stripping
 - [ ] Validation report tests + performance benchmarks
 - [ ] Integration test harness: reduce animations/settling in tests (no nested ProviderScope; finite pumps)
 - [ ] Auto‑XSD detection mapping tests (xsi:schemaLocation pairs, 4-3-0 variants, workspace XSD search)
-- [ ] Validation UX tests: ADMIN-DATA ignore option, navigable results focus/scroll, row badge presence
+- [ ] Validation UX tests: ADMIN-DATA ignore option, navigable results focus/scroll, row badge presence, tab/scrollbar counts
 - [ ] Unsaved indicator tests: tab badge shows on edit, clears on save; close-with-unsaved prompts
 
-## 1.10 Optional Enhancements (Backlog)
-- [ ] XSD schema selection UI
-  - [x] AppBar action to pick .xsd via file picker
-  - [x] Per-tab selected schema with status indicator
-  - [x] Persist last-used XSD path (per session)
-  - [x] Fallback to built-in AUTOSAR_00050.xsd
-- [ ] Add more integration tests for save/load round‑trip
-- [ ] Performance monitoring/metrics for large files
-- [ ] UI polish and micro‑animations
+# 1.10 Architecture & File Structure Refactor (Phase 1–3)
+- Phase 1 (Views/Providers extraction)
+  - [ ] Extract MaterialApp/theme to lib/ui/app.dart
+  - [ ] Extract shell (Scaffold + NavigationRail) to lib/ui/home_shell.dart
+  - [ ] Move Validation view to lib/features/validation/view/validation_view.dart
+  - [ ] Move Workspace view (incl. DnD) to lib/features/workspace/view/workspace_view.dart
+  - [ ] Move editor tabs composition to lib/features/editor/view/editor_view.dart
+  - [ ] Move providers from main.dart to:
+    - [ ] features/editor/state/file_tabs_provider.dart
+    - [ ] features/validation/state/validation_providers.dart
+    - [ ] keep app-wide toggles in app/app_providers.dart
+  - [ ] Update imports; add barrel files where useful
+- Phase 2 (Widget and service splits)
+  - [ ] Split ElementNodeWidget into: element_node_widget.dart, element_node_actions.dart, element_node_dialogs.dart, ref_indicator.dart, validation_badge.dart
+  - [ ] Extract validation gutter to features/validation/view/widgets/validation_gutter.dart
+  - [ ] Create features/workspace/service/workspace_models.dart and move models out of workspace_indexer.dart
+- Phase 3 (Core modules)
+  - [ ] Split ARXML I/O into core/xml/arxml_loader/{parser.dart,serializer.dart}
+  - [ ] Split XSD parser into core/xsd/xsd_parser/{parser.dart,index.dart,resolver.dart,tracing.dart}
+  - [ ] Move ref specialization to core/refs/{ref_normalizer_ecuc.dart,ref_normalizer_ports.dart} and keep a barrel re-export
+- Testing & verification
+  - [ ] flutter analyze passes; no new warnings of missing imports
+  - [ ] App builds and runs; no behavior/UI changes
+  - [ ] Tests compile (fix imports in tests); failing tests triaged separately
+  - [ ] Update .github/copilot-instructions.md to reflect new file map
+- Risk & rollback
+  - Keep changes purely mechanical (moves/renames); avoid logic edits
+  - Commit per-phase; small PRs; easy rollback of each phase
+
+## 1.11 Pending Execution Plan (awaiting confirmation)
+- 1.1 Reference normalization breadth (ECUC + Ports/Interfaces)
+  - [ ] Implement ECUC ref normalization (e.g., ECUC-MODULE-DEF paths; PARAM-REF/REFERENCE-VALUES)
+  - [ ] Implement ports/interfaces normalization (R-/P-PORT-PROTOTYPE → interface; SWC port refs)
+  - [ ] Normalize/resolve more ref patterns for cross-file navigation (relative paths/vendor separators); add tests
+- 1.2 Auto‑XSD detection enhancements
+  - [ ] Robustly parse xsi:schemaLocation pairs (space‑separated URI + file)
+  - [ ] Version mapping (4-3-0 ⇄ 4.3.0) with local XSD filename variants
+  - [ ] Search workspace for referenced XSD; fallback to closest known XSD
+  - [ ] UI: surface detected schema with quick override
 
 ---
 
 # 2. Completed (reverse chronological)
 
 ## 2.1 Latest Changes (Aug 2025)
+- [x] Reference normalization: RefNormalizer implemented and integrated into indicators and Go to Definition (base path + vendor/backslash/dot-segments handled); tests added for core cases
+- [x] Validation groundwork: added ValidationSeverity and severity on ValidationIssue (prep for filters and colored badges)
+- [x] Settings view added (Live validation, Verbose diagnostics, Ignore ADMIN-DATA)
+- [x] Validation options: severity filters (chips + list filtering)
+- [x] Validation results UX: row-level issue badges with severity colors and tooltip; quick “Go to issue” action (container aggregation pending)
+- [x] Validation UX: added search filter in Validation view, issue count badge in AppBar, and next/prev + copy path
 - [x] Live validation while editing via debounced ValidationScheduler (toggle-controlled)
 - [x] Go to Definition opens target file in a tab on demand and scrolls to the node (scrollToIndex wiring)
 - [x] LRU AST cache implemented and wired for open/navigate paths
 - [x] XsdParser: deeper traversal defaults (particleDepthLimit=4, groupDepthLimit=3); richer diagnostics trace buffer
 - [x] Diagnostics: bug toggle now shows inline trace viewer panel
 - [x] Auto-detect XSD from ARXML header/version when opening/creating files; per‑tab schema set accordingly
+- [x] Resource HUD overlay (bottom-right) with Settings toggle
 - [x] Simple validation action (AppBar) produces violations report with element paths
 - [x] Added unit test validation_report_test for invalid child detection
 - [x] TabBar selected tab gets subtle pill background (with bold + underline retained)
@@ -118,9 +171,6 @@
 - [x] Row hover highlight + animated chevron rotation for expand/collapse
 - [x] Context menu editing clarified: container (e.g., SHORT-NAME) -> Rename Tag; leaf value -> Edit Value
 - [x] Increased contrast for tab filenames (white text on dark AppBar)
-- [x] Edit Value fixed: available for leaf nodes and nodes with a single text child; value saved reliably
-- [x] Add Child always available; supports manual custom element entry in addition to XSD-derived options
-- [x] Chevron expand/collapse icon size increased for better clickability
 
 ## 2.2 Recent Accomplishments
 - [x] Fixed TabController updates on provider state changes (_updateTabController in build + post-frame)
@@ -129,3 +179,4 @@
 - [x] Per‑tab XSD selection UI (picker button, per‑tab indicator, default fallback)
 - [x] XsdParser enhancements: namespace‑agnostic indexes, complexContent, @ref resolution, xs:all, improved attribute discovery
 - [x] UI color refresh with gradient AppBar and TabBar styling
+

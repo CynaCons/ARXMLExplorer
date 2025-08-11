@@ -6,8 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/app_providers.dart';
 import 'package:arxml_explorer/main.dart'
-    show validationSchedulerProvider, fileTabsProvider; // access scheduler & tabs
+    show
+        validationSchedulerProvider,
+        fileTabsProvider; // access scheduler & tabs
 import 'package:arxml_explorer/workspace_indexer.dart';
+import 'package:arxml_explorer/ref_normalizer.dart';
+import 'package:arxml_explorer/arxml_validator.dart';
+import 'package:flutter/services.dart';
 
 class ElementNodeWidget extends ConsumerStatefulWidget {
   final ElementNode node;
@@ -57,10 +62,15 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
 
     items.addAll(const [
       PopupMenuItem<String>(value: 'add', child: Text('Add Child')),
-      PopupMenuItem<String>(value: 'collapse_children', child: Text('Collapse children')),
-      PopupMenuItem<String>(value: 'expand_children', child: Text('Expand children')),
+      PopupMenuItem<String>(
+          value: 'collapse_children', child: Text('Collapse children')),
+      PopupMenuItem<String>(
+          value: 'expand_children', child: Text('Expand children')),
       PopupMenuItem<String>(value: 'delete', child: Text('Delete Node')),
     ]);
+    // Add copy path option
+    items.add(const PopupMenuItem<String>(
+        value: 'copy_path', child: Text('Copy path')));
 
     showMenu(
       context: context,
@@ -109,6 +119,15 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
             .read(fileTabsProvider.notifier)
             .markDirtyForTreeProvider(widget.treeStateProvider);
         _maybeRunLiveValidation();
+        break;
+      case 'copy_path':
+        final path = _buildElementPath(widget.node);
+        Clipboard.setData(ClipboardData(text: path));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Path copied: $path'),
+              duration: const Duration(seconds: 1)),
+        );
         break;
     }
   }
@@ -271,7 +290,8 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
                                 .addChildNode(node.id, name);
                             ref
                                 .read(fileTabsProvider.notifier)
-                                .markDirtyForTreeProvider(widget.treeStateProvider);
+                                .markDirtyForTreeProvider(
+                                    widget.treeStateProvider);
                             _maybeRunLiveValidation();
                           }
                           Navigator.of(context).pop();
@@ -315,28 +335,102 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
     void Function()? goToDef;
     if (widget.node.elementText == 'DEFINITION-REF' &&
         widget.node.children.isNotEmpty) {
-      final target = widget.node.children.first.elementText.trim();
+      final raw = widget.node.children.first.elementText.trim();
       final idx = ref.watch(workspaceIndexProvider);
-      showRefIndicator = target.isNotEmpty && idx.hasTarget(target);
+      final basePath = _computeBasePath(widget.node);
+      final normalized = RefNormalizer.normalize(raw, basePath: basePath);
+      final normalizedEcuc =
+          RefNormalizer.normalizeEcuc(raw, basePath: basePath);
+      final normalizedPort =
+          RefNormalizer.normalizePortRef(raw, basePath: basePath);
+      showRefIndicator = raw.isNotEmpty &&
+          (idx.hasTarget(normalized) ||
+              idx.hasTarget(normalizedEcuc) ||
+              idx.hasTarget(normalizedPort));
       if (showRefIndicator) {
-        goToDef = () => ref
-            .read(workspaceIndexProvider.notifier)
-            .goToDefinition(target, ref);
+        void nav() async {
+          final notifier = ref.read(workspaceIndexProvider.notifier);
+          final candidates =
+              notifier.findDefinitionCandidates(raw, basePath: basePath);
+          if (candidates.isEmpty) return;
+          if (candidates.length == 1) {
+            await notifier.goToDefinition(raw, ref, basePath: basePath);
+            return;
+          }
+          // Multiple candidates -> show disambiguation dialog
+          if (!mounted) return;
+          final choice = await showDialog<WorkspaceTarget>(
+            context: context,
+            builder: (context) {
+              return AlertDialog(
+                title: const Text('Multiple matches'),
+                content: SizedBox(
+                  width: 520,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: candidates.length,
+                    itemBuilder: (context, i) {
+                      final c = candidates[i];
+                      final path = '/${c.shortNamePath.join('/')}';
+                      return ListTile(
+                        dense: true,
+                        title: Text(path,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(c.filePath,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        onTap: () => Navigator.of(context).pop(c),
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  )
+                ],
+              );
+            },
+          );
+          if (choice != null) {
+            await ref.read(fileTabsProvider.notifier).openFileAndNavigate(
+                  choice.filePath,
+                  shortNamePath: choice.shortNamePath,
+                );
+          }
+        }
+
+        goToDef = nav;
       }
     }
-
-    // Validation issue badge placeholder (reads from provider; actual mapping of node->issue later)
-    final issues = ref.watch(validationIssuesProvider);
-    final hasIssue = issues.any((i) => i.path.contains(widget.node.elementText));
 
     // Prepare tooltip for ref indicator
     String? refTooltip;
     if (widget.node.elementText == 'DEFINITION-REF' &&
         widget.node.children.isNotEmpty) {
-      final target = widget.node.children.first.elementText.trim();
+      final raw = widget.node.children.first.elementText.trim();
       final idx = ref.watch(workspaceIndexProvider);
-      if (idx.hasTarget(target)) {
-        refTooltip = 'Go to definition — ' + (idx.targets[target]?.filePath ?? '');
+      final basePath = _computeBasePath(widget.node);
+      final normalized = RefNormalizer.normalize(raw, basePath: basePath);
+      final normalizedEcuc =
+          RefNormalizer.normalizeEcuc(raw, basePath: basePath);
+      final normalizedPort =
+          RefNormalizer.normalizePortRef(raw, basePath: basePath);
+      String? key;
+      if (idx.hasTarget(normalized))
+        key = normalized;
+      else if (idx.hasTarget(normalizedEcuc))
+        key = normalizedEcuc;
+      else if (idx.hasTarget(normalizedPort)) key = normalizedPort;
+      if (key != null) {
+        final list = idx.targets[key] ?? const <WorkspaceTarget>[];
+        if (list.isEmpty) {
+          refTooltip = 'Reference target not found in workspace';
+        } else if (list.length == 1) {
+          refTooltip = 'Go to definition — ${list.first.filePath}';
+        } else {
+          refTooltip = 'Multiple matches: ${list.length} files';
+        }
       } else {
         refTooltip = 'Reference target not found in workspace';
       }
@@ -383,11 +477,70 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (hasIssue)
-                  const Tooltip(
-                    message: 'Validation issue',
-                    child: Icon(Icons.error_outline, color: Colors.orange),
-                  ),
+                // Row-level issue indicator with severity color and tooltip (aggregated for subtree)
+                Builder(builder: (_) {
+                  final allIssues = ref.watch(validationIssuesProvider);
+                  if (allIssues.isEmpty) return const SizedBox.shrink();
+                  // Collect this node's subtree ids
+                  final ids = <int>{};
+                  void gather(ElementNode n) {
+                    ids.add(n.id);
+                    for (final c in n.children) gather(c);
+                  }
+
+                  gather(widget.node);
+                  final nodeIssues = allIssues
+                      .where((i) => i.nodeId != null && ids.contains(i.nodeId))
+                      .toList();
+                  if (nodeIssues.isEmpty) return const SizedBox.shrink();
+                  // Pick highest severity icon/color
+                  ValidationSeverity top = ValidationSeverity.info;
+                  for (final i in nodeIssues) {
+                    if (i.severity == ValidationSeverity.error) {
+                      top = ValidationSeverity.error;
+                      break;
+                    }
+                    if (i.severity == ValidationSeverity.warning) {
+                      top = ValidationSeverity.warning;
+                    }
+                  }
+                  final icon = top == ValidationSeverity.error
+                      ? Icons.error_outline
+                      : top == ValidationSeverity.warning
+                          ? Icons.warning_amber_outlined
+                          : Icons.info_outline;
+                  final color = top == ValidationSeverity.error
+                      ? Colors.redAccent
+                      : top == ValidationSeverity.warning
+                          ? Colors.amber
+                          : Colors.blueAccent;
+                  final tooltip = nodeIssues.map((i) => i.message).join('\n');
+                  return Tooltip(
+                    message: tooltip,
+                    child: Row(children: [
+                      Icon(icon, color: color),
+                      if (nodeIssues.length > 1)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4.0),
+                          child: Text('${nodeIssues.length}',
+                              style: TextStyle(
+                                  color: color, fontWeight: FontWeight.w600)),
+                        ),
+                      // Quick action: go to first issue under this subtree
+                      IconButton(
+                        icon: const Icon(Icons.arrow_circle_down, size: 18),
+                        tooltip: 'Go to issue',
+                        onPressed: () {
+                          // Expand to make subtree visible; focus on current node for now
+                          ref
+                              .read(widget.treeStateProvider.notifier)
+                              .expandUntilNode(widget.node.id);
+                        },
+                      )
+                    ]),
+                  );
+                }),
+                // Reference indicator
                 if (refTooltip != null)
                   Tooltip(
                     message: refTooltip,
@@ -408,5 +561,32 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget> {
         ),
       ),
     );
+  }
+
+  // Build a base short-name path for relative references using the node's ancestry
+  String? _computeBasePath(ElementNode node) {
+    final segs = <String>[];
+    ElementNode? cur = node.parent; // base is the container of DEFINITION-REF
+    while (cur != null) {
+      final hasShort = cur.children.isNotEmpty &&
+          cur.children.first.elementText == 'SHORT-NAME' &&
+          cur.children.first.children.isNotEmpty;
+      if (hasShort) {
+        segs.add(cur.children.first.children.first.elementText.trim());
+      }
+      cur = cur.parent;
+    }
+    if (segs.isEmpty) return null;
+    return '/${segs.reversed.join('/')}';
+  }
+
+  String _buildElementPath(ElementNode node) {
+    final segs = <String>[];
+    ElementNode? cur = node;
+    while (cur != null) {
+      segs.add(cur.elementText);
+      cur = cur.parent;
+    }
+    return '/' + segs.reversed.join('/');
   }
 }
