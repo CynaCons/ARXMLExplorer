@@ -25,3 +25,6 @@ final severityFiltersProvider =
 
 // Currently selected issue index in Validation view
 final selectedIssueIndexProvider = StateProvider<int?>((ref) => null);
+
+// High contrast UI mode toggle
+final highContrastUiProvider = StateProvider<bool>((ref) => false);

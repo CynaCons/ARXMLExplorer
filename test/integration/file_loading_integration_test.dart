@@ -7,7 +7,7 @@ import 'package:arxml_explorer/main.dart';
 import 'package:arxml_explorer/elementnode.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
 import 'package:arxml_explorer/arxml_tree_view_state.dart';
-import 'package:arxml_explorer/elementnodewidget.dart';
+import 'package:arxml_explorer/features/editor/view/widgets/element_node/element_node_widget.dart';
 
 void main() {
   group('File Loading Integration Tests', () {

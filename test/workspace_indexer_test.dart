@@ -1,4 +1,5 @@
 import 'package:arxml_explorer/workspace_indexer.dart';
+import 'package:arxml_explorer/features/workspace/service/workspace_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

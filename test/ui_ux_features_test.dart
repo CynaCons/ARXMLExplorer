@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/main.dart';
+import 'package:arxml_explorer/ui/home_shell.dart';
+import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
 import 'package:arxml_explorer/arxml_tree_view_state.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
 import 'dart:io';
@@ -12,12 +13,12 @@ void main() {
         (WidgetTester tester) async {
       await tester.pumpWidget(
         const ProviderScope(
-          child: MaterialApp(home: MyHomePage(title: 'Test')),
+          child: MaterialApp(home: HomeShell()),
         ),
       );
 
       // Toggle loading state via provider
-      final ctx = tester.element(find.byType(MyHomePage));
+      final ctx = tester.element(find.byType(HomeShell));
       final container = ProviderScope.containerOf(ctx);
 
       container.read(loadingStateProvider.notifier).state = true;
@@ -37,7 +38,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [fileTabsProvider.overrideWith((ref) => notifier)],
-          child: const MaterialApp(home: MyHomePage(title: 'Test')),
+          child: const MaterialApp(home: HomeShell()),
         ),
       );
 

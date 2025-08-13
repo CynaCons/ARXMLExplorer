@@ -1,21 +1,18 @@
-import 'dart:async';
-import 'dart:io';
-import 'package:file_picker/file_picker.dart' as fp;
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:arxml_explorer/arxml_tree_view_state.dart';
 import 'package:arxml_explorer/xsd_parser.dart';
 import 'package:arxml_explorer/arxml_validator.dart';
-import 'arxmlloader.dart';
 import 'package:arxml_explorer/app_providers.dart';
-import 'workspace_indexer.dart';
-import 'package:arxml_explorer/elementnode.dart';
+import 'package:arxml_explorer/workspace_indexer.dart';
 import 'package:arxml_explorer/ast_cache.dart';
-import 'ui/app.dart';
-import 'ui/home_shell.dart';
+import 'package:arxml_explorer/arxmlloader.dart';
+import 'package:arxml_explorer/elementnode.dart';
+import 'dart:async';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart' as fp;
 
-// Providers
+// Removed obsolete placeholder comment after migration.
+
 final fileTabsProvider =
     StateNotifierProvider<FileTabsNotifier, List<FileTabState>>((ref) {
   return FileTabsNotifier(ref);
@@ -23,9 +20,9 @@ final fileTabsProvider =
 
 final loadingStateProvider = StateProvider<bool>((ref) => false);
 final diagnosticsProvider = StateProvider<bool>((ref) => false);
-
 final activeTabIndexProvider = StateProvider<int>((ref) => 0);
-
+// Added: UI scroll request for navigation (index in visible list)
+final scrollToIndexProvider = StateProvider<int?>((ref) => null);
 final activeTabProvider = Provider<FileTabState?>((ref) {
   final tabs = ref.watch(fileTabsProvider);
   final activeTabIndex = ref.watch(activeTabIndexProvider);
@@ -33,7 +30,6 @@ final activeTabProvider = Provider<FileTabState?>((ref) {
   return tabs[activeTabIndex];
 });
 
-// Debounced validation scheduler (driven by liveValidationProvider)
 final validationSchedulerProvider =
     StateNotifierProvider<ValidationScheduler, int>((ref) {
   return ValidationScheduler(ref);
@@ -43,7 +39,6 @@ class ValidationScheduler extends StateNotifier<int> {
   final Ref ref;
   Timer? _debounce;
   ValidationScheduler(this.ref) : super(0);
-
   void schedule({Duration delay = const Duration(milliseconds: 400)}) {
     if (!ref.read(liveValidationProvider)) return;
     _debounce?.cancel();
@@ -59,7 +54,7 @@ class ValidationScheduler extends StateNotifier<int> {
     final opts = ref.read(validationOptionsProvider);
     final issues = validator.validate(tree.rootNodes, parser, options: opts);
     ref.read(validationIssuesProvider.notifier).state = issues;
-    state++; // bump version for any listeners
+    state++;
   }
 
   @override
@@ -69,23 +64,15 @@ class ValidationScheduler extends StateNotifier<int> {
   }
 }
 
-// UI scroll request for navigation (index in visible list)
-final scrollToIndexProvider = StateProvider<int?>((ref) => null);
-
-// State Notifier
 class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
   final Ref _ref;
   FileTabsNotifier(this._ref) : super([]);
-
   final ARXMLFileLoader _arxmlLoader = const ARXMLFileLoader();
-  // Current schema for session (persisted in memory)
   XsdParser? _currentXsdParser;
   String? _currentXsdPath;
 
-  // Load the default AUTOSAR XSD schema into current session schema
   Future<void> _loadXsdSchema() async {
-    if (_currentXsdParser != null) return; // Already loaded
-
+    if (_currentXsdParser != null) return;
     try {
       final xsdFile = File('lib/res/xsd/AUTOSAR_00050.xsd');
       if (await xsdFile.exists()) {
@@ -94,10 +81,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         final verbose = _ref.read(diagnosticsProvider);
         _currentXsdParser = XsdParser(xsdContent, verbose: verbose);
       }
-    } catch (e) {
-      // Schema loading failed, continue without schema validation
-      print('Warning: Could not load XSD schema: $e');
-    }
+    } catch (_) {}
   }
 
   Future<void> toggleDiagnostics() async {
@@ -107,17 +91,12 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
   }
 
   Future<void> _rebuildParsersWithVerbose(bool verbose) async {
-    // Rebuild session parser
     if (_currentXsdPath != null) {
       try {
         final content = await File(_currentXsdPath!).readAsString();
         _currentXsdParser = XsdParser(content, verbose: verbose);
-      } catch (e) {
-        print('Warning: Could not reload session XSD: $e');
-      }
+      } catch (_) {}
     }
-
-    // Rebuild per-tab parsers
     final updated = <FileTabState>[];
     for (final tab in state) {
       XsdParser? parser = tab.xsdParser;
@@ -125,56 +104,36 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         try {
           final content = await File(tab.xsdPath!).readAsString();
           parser = XsdParser(content, verbose: verbose);
-        } catch (e) {
-          print('Warning: Could not reload XSD for tab ${tab.path}: $e');
-        }
+        } catch (_) {}
       } else {
-        // Use current session parser
         parser = _currentXsdParser;
       }
-      updated.add(FileTabState(
-        path: tab.path,
-        treeStateProvider: tab.treeStateProvider,
-        xsdParser: parser,
-        xsdPath: tab.xsdPath,
-      ));
+      updated.add(tab.copyWith(xsdParser: parser));
     }
     state = updated;
   }
 
-  // Attempt to detect AUTOSAR schema reference/version from ARXML header
   Future<String?> _detectSchemaPathFromArxml(String content) async {
-    // Look for explicit schemaLocation hints or AUTOSAR version in top-level tag
     final header = content.split(RegExp(r'\r?\n')).take(100).join(' ');
-
-    // Helper: try candidates (filenames or paths) in bundled xsd then workspace
     Future<String?> _resolveCandidates(List<String> candidates) async {
-      // 1) Check absolute/relative path directly if exists
       for (final c in candidates) {
         try {
-          final pathGuess = c;
-          if (await File(pathGuess).exists()) return pathGuess;
+          if (await File(c).exists()) return c;
         } catch (_) {}
       }
-      // 2) Check bundled lib/res/xsd by basename
       for (final c in candidates) {
         final base = c.split(RegExp(r'[\\\/]')).last;
         final bundled = 'lib/res/xsd/' + base;
         if (await File(bundled).exists()) return bundled;
       }
-      // 3) Search workspace folder recursively by basename
       final wsRoot = _ref.read(workspaceIndexProvider).rootDir;
       if (wsRoot != null) {
-        for (final c in candidates) {
-          final base = c.split(RegExp(r'[\\\/]')).last;
-          final hit = await _findInWorkspace(wsRoot, base);
-          if (hit != null) return hit;
-        }
+        final hit = await _findInWorkspace(wsRoot, candidates);
+        if (hit != null) return hit;
       }
       return null;
     }
 
-    // Parse xsi:schemaLocation (pairs: namespace URI followed by URL/path)
     final schemaLocAttr = RegExp(r'xsi:schemaLocation\s*=\s*"([^"]+)"')
         .firstMatch(header)
         ?.group(1);
@@ -185,10 +144,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
           .toList();
       final urls = <String>[];
       for (var i = 0; i < tokens.length; i++) {
-        // take every second token as a location if present
         if (i % 2 == 1) {
           var u = tokens[i];
-          // strip URI scheme and fragments
           final scheme = u.indexOf('://');
           if (scheme > 0) u = u.substring(scheme + 3);
           final hash = u.indexOf('#');
@@ -201,8 +158,6 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       final resolved = await _resolveCandidates(urls);
       if (resolved != null) return resolved;
     }
-
-    // Parse noNamespace schema location
     final noNsAttr = RegExp(r'noNamespaceSchemaLocation\s*=\s*"([^"]+)"')
         .firstMatch(header)
         ?.group(1);
@@ -210,8 +165,6 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       final resolved = await _resolveCandidates([noNsAttr]);
       if (resolved != null) return resolved;
     }
-
-    // Version hint on AUTOSAR root
     final versionMatch =
         RegExp(r'AUTOSAR[^>]*version\s*=\s*"([^"]+)"').firstMatch(header);
     if (versionMatch != null) {
@@ -224,90 +177,65 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       final resolved = await _resolveCandidates(variants);
       if (resolved != null) return resolved;
     }
-
-    // Fallback to default bundled
     final fallback = 'lib/res/xsd/AUTOSAR_00050.xsd';
     return await File(fallback).exists() ? fallback : null;
   }
 
-  // Search workspace folder recursively for a filename
-  Future<String?> _findInWorkspace(String rootDir, String basename) async {
+  Future<String?> _findInWorkspace(
+      String rootDir, List<String> basenames) async {
     try {
       final dir = Directory(rootDir);
       await for (final ent in dir.list(recursive: true, followLinks: false)) {
-        if (ent is File &&
-            ent.path.split(Platform.pathSeparator).last == basename) {
-          return ent.path;
+        if (ent is File) {
+          final name = ent.path.split(Platform.pathSeparator).last;
+          if (basenames.contains(name)) return ent.path;
         }
       }
     } catch (_) {}
     return null;
   }
 
-  // Load the XSD schema for the active tab from file picker
   Future<void> pickXsdForActiveTab() async {
     final activeIndex = _ref.read(activeTabIndexProvider);
     if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) return;
-
     fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
       type: fp.FileType.custom,
       allowedExtensions: ['xsd'],
     );
-
     if (result != null && result.files.single.path != null) {
       final filePath = result.files.single.path!;
       try {
         final content = await File(filePath).readAsString();
         final verbose = _ref.read(diagnosticsProvider);
         final parser = XsdParser(content, verbose: verbose);
-
-        // Update session current schema so future tabs use it
         _currentXsdParser = parser;
         _currentXsdPath = filePath;
-
-        // Update active tab
         final updated = [...state];
         final tab = updated[activeIndex];
-        updated[activeIndex] = FileTabState(
-          path: tab.path,
-          treeStateProvider: tab.treeStateProvider,
+        updated[activeIndex] = tab.copyWith(
           xsdParser: parser,
           xsdPath: filePath,
         );
         state = updated;
-      } catch (e) {
-        print('Error loading selected XSD: $e');
-      }
+      } catch (_) {}
     }
   }
 
   Future<void> openNewFile() async {
-    print('DEBUG: openNewFile called');
     try {
       _ref.read(loadingStateProvider.notifier).state = true;
-      print('DEBUG: Loading state set to true');
-
-      // Load default XSD schema if not already loaded
       await _loadXsdSchema();
-      print('DEBUG: XSD schema loading completed');
-
       fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
         type: fp.FileType.custom,
         allowedExtensions: ['arxml', 'xml'],
       );
-      print('DEBUG: File picker result: ${result?.files.length ?? 0} files');
-
       if (result != null && result.files.single.path != null) {
         final filePath = result.files.single.path!;
-        print('DEBUG: Selected file path: $filePath');
-
         final cache = _ref.read(astCacheProvider);
         List<ElementNode>? nodes = cache.get(filePath);
         String fileContent;
         if (nodes == null) {
           fileContent = await File(filePath).readAsString();
-          print('DEBUG: File content loaded, length: ${fileContent.length}');
-          // Try auto-detect schema for this file
           final detectedSchema = await _detectSchemaPathFromArxml(fileContent);
           XsdParser? xsdForTab = _currentXsdParser;
           String? xsdPath = _currentXsdPath;
@@ -317,32 +245,20 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
               xsdForTab =
                   XsdParser(content, verbose: _ref.read(diagnosticsProvider));
               xsdPath = detectedSchema;
-            } catch (e) {
-              print('Warning: auto-detected XSD failed to load: $e');
-            }
+            } catch (_) {}
           }
-
           nodes = _arxmlLoader.parseXmlContent(fileContent);
           cache.put(filePath, nodes);
-          print('DEBUG: XML parsed, nodes count: ${nodes.length}');
-
           final newTab = FileTabState(
             path: filePath,
             treeStateProvider: arxmlTreeStateProvider(nodes),
             xsdParser: xsdForTab,
             xsdPath: xsdPath,
           );
-
           state = [...state, newTab];
           _ref.read(activeTabIndexProvider.notifier).state = state.length - 1;
-          print('DEBUG: New tab added, total tabs: ${state.length}');
-          print('DEBUG: Active tab index set to: ${state.length - 1}');
-
-          // Give a small delay to ensure state propagation
           await Future.delayed(const Duration(milliseconds: 100));
-          print('DEBUG: State propagation complete');
         } else {
-          print('DEBUG: Using cached AST for $filePath');
           final newTab = FileTabState(
             path: filePath,
             treeStateProvider: arxmlTreeStateProvider(nodes),
@@ -352,38 +268,24 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
           state = [...state, newTab];
           _ref.read(activeTabIndexProvider.notifier).state = state.length - 1;
         }
-      } else {
-        print('DEBUG: File picker cancelled or no file selected');
       }
-    } catch (e, stackTrace) {
-      print('ERROR in openNewFile: $e');
-      print('Stack trace: $stackTrace');
+    } catch (_) {
     } finally {
       _ref.read(loadingStateProvider.notifier).state = false;
-      print('DEBUG: Loading state set to false');
     }
   }
 
   Future<void> createNewFile() async {
-    // Load default XSD schema if not already loaded
     await _loadXsdSchema();
-
     String? outputFile = await fp.FilePicker.platform.saveFile(
       dialogTitle: 'Please select where to save the new file:',
       fileName: 'new_file.arxml',
     );
-
     if (outputFile != null) {
-      const String defaultContent = '''
-<?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR>
-</AUTOSAR>
-''';
+      const String defaultContent =
+          '''\n<?xml version="1.0" encoding="UTF-8"?>\n<AUTOSAR>\n</AUTOSAR>\n''';
       await File(outputFile).writeAsString(defaultContent);
-      // Now open the newly created file
       final fileContent = await File(outputFile).readAsString();
-
-      // Try auto-detect schema
       final detectedSchema = await _detectSchemaPathFromArxml(fileContent);
       XsdParser? xsdForTab = _currentXsdParser;
       String? xsdPath = _currentXsdPath;
@@ -393,11 +295,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
           xsdForTab =
               XsdParser(content, verbose: _ref.read(diagnosticsProvider));
           xsdPath = detectedSchema;
-        } catch (e) {
-          print('Warning: auto-detected XSD failed to load: $e');
-        }
+        } catch (_) {}
       }
-
       final nodes = _arxmlLoader.parseXmlContent(fileContent);
       final newTab = FileTabState(
         path: outputFile,
@@ -413,11 +312,9 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
   Future<void> saveActiveFile() async {
     final activeTab = _ref.read(activeTabProvider);
     if (activeTab == null) return;
-
     final treeState = _ref.read(activeTab.treeStateProvider);
     final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
     await File(activeTab.path).writeAsString(xmlString);
-    // Clear dirty flag for the saved tab
     final idx = state.indexWhere((t) => t.path == activeTab.path);
     if (idx != -1) {
       final updated = List<FileTabState>.from(state);
@@ -433,7 +330,6 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
       await File(tab.path).writeAsString(xmlString);
     }
-    // Clear all dirty flags
     state = [for (final t in state) t.copyWith(isDirty: false)];
   }
 
@@ -451,19 +347,15 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
 
   Future<void> openFileAndNavigate(String filePath,
       {required List<String> shortNamePath}) async {
-    // If already open, just navigate
     final existingIndex = state.indexWhere((t) => t.path == filePath);
     if (existingIndex != -1) {
       _ref.read(activeTabIndexProvider.notifier).state = existingIndex;
       _navigateToShortPath(state[existingIndex], shortNamePath);
       return;
     }
-
     try {
       _ref.read(loadingStateProvider.notifier).state = true;
-      // Load default schema if missing
       await _loadXsdSchema();
-
       final cache = _ref.read(astCacheProvider);
       List<ElementNode>? nodes = cache.get(filePath);
       String? content;
@@ -472,8 +364,6 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         nodes = _arxmlLoader.parseXmlContent(content);
         cache.put(filePath, nodes);
       }
-
-      // Per-file auto-detect schema
       XsdParser? xsdForTab = _currentXsdParser;
       String? xsdPath = _currentXsdPath;
       final detectedSchema =
@@ -486,7 +376,6 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
           xsdPath = detectedSchema;
         } catch (_) {}
       }
-
       final tab = FileTabState(
         path: filePath,
         treeStateProvider: arxmlTreeStateProvider(nodes),
@@ -496,8 +385,6 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       state = [...state, tab];
       final idx = state.length - 1;
       _ref.read(activeTabIndexProvider.notifier).state = idx;
-
-      // Wait a moment for providers to wire
       await Future.delayed(const Duration(milliseconds: 50));
       _navigateToShortPath(tab, shortNamePath);
     } finally {
@@ -507,7 +394,6 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
 
   void _navigateToShortPath(FileTabState tab, List<String> shortNamePath) {
     final tree = _ref.read(tab.treeStateProvider);
-    // Traverse visible nodes to find path by successive short-name matches
     int? targetId;
     void search(ElementNode node, List<String> remaining) {
       if (remaining.isEmpty) {
@@ -520,7 +406,6 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
             c.children.isNotEmpty && c.children.first.children.isEmpty;
         final value = hasShort ? c.children.first.elementText : '';
         if (c.elementText == 'SHORT-NAME' || value == next) {
-          // If this node is a SHORT-NAME container or matches value, continue
           if (c.elementText != 'SHORT-NAME') {
             search(c, remaining.sublist(1));
           } else if (c.parent != null) {
@@ -538,20 +423,17 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       if (targetId != null) break;
       search(r, shortNamePath);
     }
-
     if (targetId != null) {
       final notifier = _ref.read(tab.treeStateProvider.notifier);
       notifier.expandUntilNode(targetId!);
       final updated = _ref.read(tab.treeStateProvider);
       final index = updated.visibleNodes.indexWhere((n) => n.id == targetId);
       if (index != -1) {
-        // Request UI to scroll now that we know the index
         _ref.read(scrollToIndexProvider.notifier).state = index;
       }
     }
   }
 
-  // Mark the tab that owns the given tree provider as dirty (unsaved changes)
   void markDirtyForTreeProvider(
       AutoDisposeStateNotifierProvider<ArxmlTreeStateNotifier, ArxmlTreeState>
           provider) {
@@ -563,30 +445,16 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
   }
 
   Future<void> resetXsdForActiveTabToSession() async {
-    // Ensure session schema is loaded
     await _loadXsdSchema();
     final activeIndex = _ref.read(activeTabIndexProvider);
     if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) return;
     final updated = [...state];
     final tab = updated[activeIndex];
-    updated[activeIndex] = FileTabState(
-      path: tab.path,
-      treeStateProvider: tab.treeStateProvider,
+    updated[activeIndex] = tab.copyWith(
       xsdParser: _currentXsdParser,
       xsdPath: _currentXsdPath,
       isDirty: tab.isDirty,
     );
     state = updated;
   }
-}
-
-// Main App
-void main() {
-  runApp(const ProviderScope(child: AppRoot(home: HomeShell())));
-}
-
-class XmlExplorerApp extends StatelessWidget {
-  const XmlExplorerApp({super.key});
-  @override
-  Widget build(BuildContext context) => const AppRoot(home: HomeShell());
 }
