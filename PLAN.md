@@ -2,7 +2,61 @@
 
 # 1. Active Plan (Reset – Aug 2025)
 
-_No active/open tasks. Plan reset clean per request. Add new tasks here going forward._
+## 1.1 NavigationRail Remediation & Redesign
+- [ ] Remove stray "ARXML" element appearing at top of rail (identify source widget & delete)
+- [ ] Ensure only intended destinations: Editor / Workspace / Validation / Settings
+- [ ] Increase icon size (target ~28px) with consistent padding
+- [ ] Change selection highlight to square (no rounded corners) behind icon+label
+- [ ] Refine highlight color (accessible contrast; light/dark & high contrast modes)
+- [ ] Enforce single-line labels (overflow ellipsis, no wrap)
+- [ ] Align icon + label vertically centered; consistent spacing
+- [ ] Hover & pressed states updated for square highlight (separate from selected state)
+- [ ] High contrast mode variant of square highlight (outline or solid depending on theme)
+- [ ] Code cleanup: extract NavRail destination builder to a dedicated helper/widget
+
+## 1.2 AppBar / Top Toolbar Consolidation
+- [ ] Inventory current icons (list & purpose)
+- [ ] Define primary always-visible actions (e.g., Open, Save, Undo, Redo)
+- [ ] Move secondary/rare actions (Diagnostics toggle, Live Validation toggle, High Contrast, Settings) into overflow menu
+- [ ] Introduce overflow (3‑dot) menu with labeled actions + shortcuts in tooltips
+- [ ] Group related actions (Save/Save All; Validation toggles) logically
+- [ ] Remove redundant or low-value icons after consolidation
+- [ ] Provide keyboard shortcut cheat sheet entry (modal or menu section)
+
+## 1.3 Accessibility & Layout Enhancements
+- [ ] Minimum tap target >= 44x44 for rail destinations and toolbar icons
+- [ ] Focus outline & keyboard navigation order for rail & overflow menu
+- [ ] Color contrast audit for new square indicator (WCAG AA)
+- [ ] Tooltip text audit (clear, consistent verbs)
+
+## 1.4 Testing & Validation (to integrate after implementation)
+- [ ] Golden test for updated NavigationRail (light/dark + high contrast)
+- [ ] Widget test: selecting each destination updates active view
+- [ ] Widget test: overflow menu opens & triggers actions (e.g., toggle diagnostics)
+- [ ] Accessibility test: focus traversal sequence includes rail then toolbar then editor
+- [ ] Regression test: stray "ARXML" element no longer present
+
+## 1.5 Workspace View Refactor (Hierarchical + Status)
+- [ ] Remove duplicate lists (identify both sources, consolidate to single data model)
+- [ ] Represent workspace as directory tree (folders first, then files) reflecting actual FS structure
+- [ ] Collapsible directories with expand/collapse state persistence per session
+- [ ] Index status indicators per file (queued, processing, processed, error) via colored dot + tooltip
+- [ ] Directory aggregate status (e.g., spinner if any child processing, warning if any error)
+- [ ] Show file count per directory (badge) & processed/total fraction in tooltip
+- [ ] Lazy build children on expand for performance (avoid building entire large tree up front)
+- [ ] Sorting: directories alphabetically, files alphabetically (case-insensitive)
+- [ ] Filter/search box (scopes to file + folder names, highlights matches, auto-expands containing branches)
+- [ ] Selection opens file tab (double‑click or Enter) and scrolls to first SHORT-NAME
+- [x] Double-click switches to Editor view automatically after opening
+- [ ] Context menu: Refresh Directory, Reveal in OS, Remove From Index (if implemented)
+- [ ] Error state styling (red icon + message tooltip) for parse/index failures
+- [ ] Performance: virtualization / limited render for long sibling lists (>500) with chunked loading
+- [ ] Provider/state redesign: single WorkspaceTreeNode model (folder/file) with status & children
+- [ ] Migrate existing index results into hierarchical structure builder
+- [ ] Tests: tree build from sample nested structure
+- [ ] Tests: status indicator transitions (queued -> processing -> processed)
+- [ ] Tests: filter narrows & highlights results, expands correct ancestors
+- [ ] Regression test: only one list rendered (assert single Scrollable)
 
 ---
 
