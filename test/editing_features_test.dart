@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
-import 'package:arxml_explorer/arxmlloader.dart';
-import 'package:arxml_explorer/elementnode.dart';
+import 'package:arxml_explorer/features/editor/editor.dart';
+import 'package:arxml_explorer/core/core.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
 import 'dart:io';
 
 void main() {
@@ -131,6 +131,26 @@ void main() {
 
       // Cleanup
       await File(tempPath).delete();
+    });
+
+    test('Add child expands parent and selects new node', () {
+      final notifier = container.read(arxmlTreeStateProvider(nodes).notifier);
+      final parent = notifier.state.rootNodes.first;
+      // collapse parent to test auto-expand
+      parent.isCollapsed = true;
+      final originalVisibleCount = notifier.state.visibleNodes.length;
+      notifier.addChildNode(parent.id, 'NEW-CHILD-TAG');
+      // parent should be expanded now
+      expect(parent.isCollapsed, isFalse);
+      // new child should be present
+      final added =
+          parent.children.lastWhere((c) => c.elementText == 'NEW-CHILD-TAG');
+      expect(added.elementText, 'NEW-CHILD-TAG');
+      // state selection should be the new child
+      expect(notifier.state.selectedNodeId, added.id);
+      // visible nodes should increase
+      expect(notifier.state.visibleNodes.length,
+          greaterThan(originalVisibleCount));
     });
   });
 }

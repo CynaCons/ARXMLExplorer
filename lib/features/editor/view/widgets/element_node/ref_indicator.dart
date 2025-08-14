@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/elementnode.dart';
-import 'package:arxml_explorer/ref_normalizer.dart';
-import 'package:arxml_explorer/workspace_indexer.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
+import 'package:arxml_explorer/core/refs/ref_normalizer.dart';
 import 'package:arxml_explorer/features/workspace/service/workspace_models.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
+import '../../../../workspace/workspace.dart'; // For WorkspaceIndexNotifier
 
 class RefIndicator extends ConsumerWidget {
   final ElementNode node;

@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
+import 'package:arxml_explorer/features/editor/editor.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
-import 'package:arxml_explorer/elementnodesearchdelegate.dart';
+import 'package:arxml_explorer/features/editor/view/widgets/search/custom_search_delegate.dart';
 import 'dart:io';
 
 void main() {

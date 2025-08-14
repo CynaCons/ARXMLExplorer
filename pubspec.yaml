@@ -47,6 +47,8 @@ dependencies:
   flutter_riverpod: ^2.6.1
   scrollable_positioned_list: ^0.3.8
   path: ^1.8.3
+  arxml_core:
+    path: packages/arxml_core
 
 dev_dependencies:
   flutter_test:
@@ -58,6 +60,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^4.0.0
+  dart_code_metrics: ^5.7.6
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

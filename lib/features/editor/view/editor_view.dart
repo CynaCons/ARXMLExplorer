@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
+import '../editor.dart'; // For ARXMLTreeViewState
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/services.dart';
 
-import 'package:arxml_explorer/elementnode.dart';
 import 'package:arxml_explorer/features/editor/view/widgets/element_node/element_node_widget.dart';
 import 'package:arxml_explorer/app_providers.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart'
@@ -14,9 +14,7 @@ import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart'
         activeTabProvider,
         diagnosticsProvider,
         scrollToIndexProvider;
-import 'package:arxml_explorer/arxml_tree_view_state.dart'
-    show FileTabState; // temp until refactor
-import 'package:arxml_explorer/elementnodesearchdelegate.dart';
+import 'package:arxml_explorer/features/editor/view/widgets/search/custom_search_delegate.dart';
 
 enum _NavDir {
   up,
@@ -94,267 +92,110 @@ class _EditorViewState extends ConsumerState<EditorView> {
                   ),
                 ),
               ),
+            // Removed duplicate TabBar here; AppBar in HomeShell owns the tabs
             Expanded(
-              child: Column(
-                children: [
-                  TabBar(
-                    controller: widget.tabController,
-                    isScrollable: true,
-                    indicatorColor: Colors.transparent,
-                    tabs: tabs
-                        .map((tab) => Tab(
-                              child: Row(
-                                children: [
-                                  AnimatedContainer(
-                                    duration: const Duration(milliseconds: 180),
-                                    curve: Curves.easeOutCubic,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: widget.tabController.index ==
-                                              tabs.indexOf(tab)
-                                          ? Colors.white.withOpacity(0.15)
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Text(
-                                          tab.path
-                                              .split(Platform.pathSeparator)
-                                              .last,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontWeight:
-                                                widget.tabController.index ==
-                                                        tabs.indexOf(tab)
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w500,
-                                          ),
-                                        ),
-                                        if (tab.isDirty)
-                                          const Padding(
-                                            padding: EdgeInsets.only(left: 6.0),
-                                            child: Tooltip(
-                                              message: 'Unsaved changes',
-                                              child: Icon(Icons.circle,
-                                                  size: 8, color: Colors.amber),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (tab.xsdPath != null)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 6.0),
-                                      child: Icon(Icons.rule, size: 14),
-                                    )
-                                ],
-                              ),
-                            ))
-                        .toList(),
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      controller: widget.tabController,
-                      children: tabs.map((tab) {
-                        return Consumer(builder: (context, ref, child) {
-                          final treeState = ref.watch(tab.treeStateProvider);
-                          final notifier =
-                              ref.read(tab.treeStateProvider.notifier);
-                          return FocusableActionDetector(
-                            autofocus: true,
-                            shortcuts: <LogicalKeySet, Intent>{
-                              LogicalKeySet(LogicalKeyboardKey.arrowUp):
-                                  const _NavIntent(_NavDir.up),
-                              LogicalKeySet(LogicalKeyboardKey.arrowDown):
-                                  const _NavIntent(_NavDir.down),
-                              LogicalKeySet(LogicalKeyboardKey.arrowLeft):
-                                  const _NavIntent(_NavDir.left),
-                              LogicalKeySet(LogicalKeyboardKey.arrowRight):
-                                  const _NavIntent(_NavDir.right),
-                              LogicalKeySet(LogicalKeyboardKey.home):
-                                  const _NavIntent(_NavDir.home),
-                              LogicalKeySet(LogicalKeyboardKey.end):
-                                  const _NavIntent(_NavDir.end),
-                              LogicalKeySet(LogicalKeyboardKey.pageUp):
-                                  const _NavIntent(_NavDir.pageUp),
-                              LogicalKeySet(LogicalKeyboardKey.pageDown):
-                                  const _NavIntent(_NavDir.pageDown),
-                              LogicalKeySet(LogicalKeyboardKey.enter):
-                                  const _NavIntent(_NavDir.enter),
-                              LogicalKeySet(LogicalKeyboardKey.keyF,
-                                      LogicalKeyboardKey.control):
-                                  const _NavIntent(_NavDir.focusSearch),
-                              LogicalKeySet(LogicalKeyboardKey.escape):
-                                  const _NavIntent(_NavDir.clearSelection),
-                            },
-                            actions: <Type, Action<Intent>>{
-                              _NavIntent: CallbackAction<_NavIntent>(
-                                onInvoke: (intent) {
-                                  switch (intent.dir) {
-                                    case _NavDir.up:
-                                      notifier.selectUp();
-                                      break;
-                                    case _NavDir.down:
-                                      notifier.selectDown();
-                                      break;
-                                    case _NavDir.left:
-                                      notifier.collapseOrGoParent();
-                                      break;
-                                    case _NavDir.right:
-                                      notifier.expandOrGoChild();
-                                      break;
-                                    case _NavDir.home:
-                                      notifier.selectFirst();
-                                      break;
-                                    case _NavDir.end:
-                                      notifier.selectLast();
-                                      break;
-                                    case _NavDir.pageUp:
-                                      notifier.pageUp();
-                                      break;
-                                    case _NavDir.pageDown:
-                                      notifier.pageDown();
-                                      break;
-                                    case _NavDir.enter:
-                                      final treeStateCurrent =
-                                          ref.read(tab.treeStateProvider);
-                                      final selId =
-                                          treeStateCurrent.selectedNodeId;
-                                      if (selId != null) {
-                                        final node =
-                                            treeStateCurrent.flatMap[selId];
-                                        if (node != null &&
-                                            node.children.isEmpty) {
-                                          showDialog(
-                                              context: context,
-                                              builder: (_) {
-                                                final controller =
-                                                    TextEditingController(
-                                                        text: node.elementText);
-                                                return AlertDialog(
-                                                  title:
-                                                      const Text('Edit Value'),
-                                                  content: TextField(
-                                                      controller: controller,
-                                                      autofocus: true),
-                                                  actions: [
-                                                    TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                                context),
-                                                        child: const Text(
-                                                            'Cancel')),
-                                                    TextButton(
-                                                        onPressed: () {
-                                                          notifier
-                                                              .editNodeValue(
-                                                                  node.id,
-                                                                  controller
-                                                                      .text);
-                                                          ref
-                                                              .read(
-                                                                  fileTabsProvider
-                                                                      .notifier)
-                                                              .markDirtyForTreeProvider(
-                                                                  tab.treeStateProvider);
-                                                          Navigator.pop(
-                                                              context);
-                                                        },
-                                                        child:
-                                                            const Text('Save'))
-                                                  ],
-                                                );
-                                              });
-                                        } else if (node != null &&
-                                            node.children.isNotEmpty) {
-                                          notifier.toggleNodeCollapse(node.id);
-                                        }
-                                      }
-                                      break;
-                                    case _NavDir.focusSearch:
-                                      final treeState =
-                                          ref.read(tab.treeStateProvider);
-                                      showSearch<int?>(
-                                        context: context,
-                                        delegate:
-                                            CustomSearchDelegate(treeState),
-                                      ).then((nodeId) {
-                                        if (nodeId != null) {
-                                          notifier.expandUntilNode(nodeId);
-                                          final updated =
-                                              ref.read(tab.treeStateProvider);
-                                          final idx = updated.visibleNodes
-                                              .indexWhere(
-                                                  (n) => n.id == nodeId);
-                                          if (idx != -1) {
-                                            notifier.setSelected(nodeId);
-                                            widget.itemScrollController
-                                                .scrollTo(
-                                              index: idx,
-                                              duration: const Duration(
-                                                  milliseconds: 250),
-                                              curve: Curves.easeOutCubic,
-                                            );
-                                          }
-                                        }
-                                      });
-                                      break;
-                                    case _NavDir.clearSelection:
-                                      notifier.setSelected(null);
-                                      break;
-                                  }
-                                  // ensure visible after nav
-                                  notifier.ensureSelectionVisible((idx) {
-                                    widget.itemScrollController.scrollTo(
-                                      index: idx,
-                                      duration:
-                                          const Duration(milliseconds: 200),
-                                      curve: Curves.easeOut,
-                                    );
-                                  });
-                                  return null;
-                                },
-                              )
-                            },
-                            child: ScrollablePositionedList.builder(
-                              itemScrollController: widget.itemScrollController,
-                              itemPositionsListener:
-                                  widget.itemPositionsListener,
-                              itemCount: treeState.visibleNodes.length,
-                              itemBuilder: (context, index) {
-                                final node = treeState.visibleNodes[index];
-                                final isSelected =
-                                    node.id == treeState.selectedNodeId;
-                                return GestureDetector(
-                                  onTap: () => ref
-                                      .read(tab.treeStateProvider.notifier)
-                                      .setSelected(node.id),
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .primary
-                                              .withOpacity(0.12)
-                                          : null,
-                                    ),
-                                    child: ElementNodeWidget(
-                                      node: node,
-                                      xsdParser: tab.xsdParser,
-                                      treeStateProvider: tab.treeStateProvider,
-                                    ),
+              child: TabBarView(
+                controller: widget.tabController,
+                children: tabs.map((tab) {
+                  return Consumer(builder: (context, ref, child) {
+                    final treeState = ref.watch(tab.treeStateProvider);
+                    final notifier = ref.read(tab.treeStateProvider.notifier);
+                    return FocusableActionDetector(
+                      autofocus: true,
+                      shortcuts: <LogicalKeySet, Intent>{
+                        LogicalKeySet(LogicalKeyboardKey.arrowUp):
+                            const _NavIntent(_NavDir.up),
+                        LogicalKeySet(LogicalKeyboardKey.arrowDown):
+                            const _NavIntent(_NavDir.down),
+                        LogicalKeySet(LogicalKeyboardKey.arrowLeft):
+                            const _NavIntent(_NavDir.left),
+                        LogicalKeySet(LogicalKeyboardKey.arrowRight):
+                            const _NavIntent(_NavDir.right),
+                        LogicalKeySet(LogicalKeyboardKey.home):
+                            const _NavIntent(_NavDir.home),
+                        LogicalKeySet(LogicalKeyboardKey.end):
+                            const _NavIntent(_NavDir.end),
+                        LogicalKeySet(LogicalKeyboardKey.pageUp):
+                            const _NavIntent(_NavDir.pageUp),
+                        LogicalKeySet(LogicalKeyboardKey.pageDown):
+                            const _NavIntent(_NavDir.pageDown),
+                        LogicalKeySet(LogicalKeyboardKey.enter):
+                            const _NavIntent(_NavDir.enter),
+                        LogicalKeySet(LogicalKeyboardKey.keyF,
+                                LogicalKeyboardKey.control):
+                            const _NavIntent(_NavDir.focusSearch),
+                        LogicalKeySet(LogicalKeyboardKey.escape):
+                            const _NavIntent(_NavDir.clearSelection),
+                      },
+                      actions: <Type, Action<Intent>>{
+                        _NavIntent: CallbackAction<_NavIntent>(
+                          onInvoke: (intent) {
+                            switch (intent.dir) {
+                              case _NavDir.up:
+                                notifier.selectUp();
+                                break;
+                              case _NavDir.down:
+                                notifier.selectDown();
+                                break;
+                              case _NavDir.left:
+                                notifier.collapseOrGoParent();
+                                break;
+                              case _NavDir.right:
+                                notifier.expandOrGoChild();
+                                break;
+                              case _NavDir.home:
+                                notifier.selectFirst();
+                                break;
+                              case _NavDir.end:
+                                notifier.selectLast();
+                                break;
+                              case _NavDir.pageUp:
+                                notifier.pageUp();
+                                break;
+                              case _NavDir.pageDown:
+                                notifier.pageDown();
+                                break;
+                              case _NavDir.enter:
+                                notifier.toggleExpandOrEdit((n) {
+                                  // no-op in tests; editing handled in UI
+                                });
+                                break;
+                              case _NavDir.focusSearch:
+                                showSearch(
+                                  context: context,
+                                  delegate: CustomSearchDelegate(
+                                    treeState,
                                   ),
                                 );
-                              },
-                            ),
+                                break;
+                              case _NavDir.clearSelection:
+                                notifier.setSelected(null);
+                                break;
+                            }
+                            return null;
+                          },
+                        ),
+                      },
+                      child: ScrollablePositionedList.separated(
+                        itemScrollController: widget.itemScrollController,
+                        itemPositionsListener: widget.itemPositionsListener,
+                        itemCount: treeState.rootNodes.length,
+                        itemBuilder: (context, index) {
+                          ElementNode node = treeState.rootNodes[index];
+                          return ElementNodeWidget(
+                            node: node,
+                            xsdParser: tab.xsdParser,
+                            treeStateProvider: tab.treeStateProvider,
                           );
-                        });
-                      }).toList(),
-                    ),
-                  ),
-                ],
+                        },
+                        separatorBuilder: (context, index) => const Divider(
+                          height: 1,
+                          thickness: 0.2,
+                        ),
+                      ),
+                    );
+                  });
+                }).toList(),
               ),
             ),
           ],

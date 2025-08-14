@@ -4,12 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import 'package:arxml_explorer/app_providers.dart';
-import 'package:arxml_explorer/elementnode.dart';
-import 'package:arxml_explorer/arxml_validator.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
+import 'package:arxml_explorer/core/validation/issues.dart';
+import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart'
+    show activeTabProvider;
 import 'package:arxml_explorer/features/validation/state/validation_providers.dart';
 import 'package:arxml_explorer/ui/home_shell.dart' show navRailIndexProvider;
-import 'package:arxml_explorer/main.dart'
-    show activeTabProvider; // reduced temp coupling
 import 'widgets/validation_gutter.dart';
 
 class ValidationView extends ConsumerWidget {

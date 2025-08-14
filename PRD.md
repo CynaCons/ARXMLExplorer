@@ -51,15 +51,25 @@ As a user, I want to:
 - **Efficient Collapsing/Uncollapsing:** Ensure efficient handling of collapsing and uncollapsing for large files, addressing potential recursion issues by flattening the collapse state management.
 - **Optimized Scrolling:** Compare and improve scrolling performance, potentially by loading text content first and then progressively rendering complete details for large files.
 
+### Advanced Features
+- **Workspace Management:** Multi-file workspace with cross-file reference resolution and indexing.
+- **Validation Engine:** Real-time XSD validation with contextual error reporting and suggestions.
+- **Navigation Rail:** Modern UI with dedicated views for Editor, Workspace, Validation, and Settings.
+- **Live Validation:** Background validation with debounced updates and severity filtering.
+- **Reference Normalization:** Cross-file go-to-definition with ECUC and port-specific reference handling.
+- **Command System:** Undo/redo support with structural change detection.
+- **Schema Detection:** Automatic XSD detection from ARXML headers with version fallback.
+- **Performance Optimization:** AST caching, incremental indexing, and virtualized rendering for large files.
+
 ### Other
 - **MSI Packaging:** Ability to package the application into an MSI installer (with restricted usage).
 - **Asynchronous Workers:** Utilize asynchronous workers for tasks that can be updated in the background.
 
 ## 4. Architecture
-(To be defined in detail as development progresses, but will likely involve):
-- **Flutter Framework:** For cross-platform UI development.
-- **XML Parsing Library:** For reading and manipulating ARXML files.
-- **AUTOSAR Schema Validation:** A mechanism to load and validate against AUTOSAR XSDs.
-- **State Management:** Using `provider` for managing application state.
-- **Node Tree Representation:** An in-memory representation of the ARXML tree (e.g., `ElementNode` and `ElementNodeController`).
-- **File I/O:** For opening, saving, and managing files on the local filesystem.
+Implemented as a layered architecture with clear separation of concerns:
+- **Presentation Layer:** Flutter widgets and views (`ui/`, `features/*/view`)
+- **Application Layer:** State management, providers, and commands (`features/*/state`)
+- **Core Layer:** Pure models, parsers, validation, and utilities (`core/`, `packages/arxml_core`)
+- **State Management:** Riverpod for reactive state and provider composition
+- **Command Pattern:** Structured editing with undo/redo and validation integration
+- **Modular Design:** Feature-based organization with barrel exports and dependency rules

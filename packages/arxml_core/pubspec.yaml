@@ -1,0 +1,13 @@
+name: arxml_core
+version: 0.1.0
+publish_to: 'none'
+description: Core models, parsers, XSD utilities and validation primitives for ARXMLExplorer.
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  xml: ^6.1.0
+
+dev_dependencies:
+  lints: ^4.0.0

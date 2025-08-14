@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:arxml_explorer/ui/home_shell.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
+import 'package:arxml_explorer/features/editor/editor.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
 import 'dart:io';
 
@@ -51,7 +51,9 @@ void main() {
         treeStateProvider: arxmlTreeStateProvider(nodes),
       );
       notifier.state = [newTab];
-      await tester.pumpAndSettle();
+      // Replace pumpAndSettle with bounded pumps to prevent long waits
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
 
       // Verify initial state has many nodes
       final treeNotifier = container.read(newTab.treeStateProvider.notifier);
@@ -61,7 +63,7 @@ void main() {
 
       // Tap Collapse All
       await tester.tap(find.byIcon(Icons.unfold_less));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
 
       // Re-read the notifier state after UI interaction
       final collapsedState = container.read(newTab.treeStateProvider);
@@ -70,10 +72,10 @@ void main() {
 
       // Tap Expand All
       await tester.tap(find.byIcon(Icons.unfold_more));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
 
       final expandedState = container.read(newTab.treeStateProvider);
       expect(expandedState.visibleNodes.length, initialVisibleCount);
-    });
+    }, timeout: const Timeout(Duration(seconds: 45)));
   });
 }

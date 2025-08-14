@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/arxml_validator.dart';
+import 'package:arxml_explorer/core/validation/issues.dart';
 
 // Live validation toggle (off by default)
 final liveValidationProvider = StateProvider<bool>((ref) => false);
@@ -25,6 +25,3 @@ final severityFiltersProvider =
 
 // Currently selected issue index in Validation view
 final selectedIssueIndexProvider = StateProvider<int?>((ref) => null);
-
-// High contrast UI mode toggle
-final highContrastUiProvider = StateProvider<bool>((ref) => false);

@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 class DepthIndicator extends StatelessWidget {
   final int depth;
   final double indentWidth;
-  final bool isLastChild;
+  final bool isLastChild; // reserved for future tree drawing enhancements
 
   const DepthIndicator({
-    Key? key,
+    super.key,
     required this.depth,
     this.indentWidth = 10.0,
     required this.isLastChild,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +27,6 @@ class _DepthPainter extends CustomPainter {
   final int depth;
   final double indentWidth;
   final bool isLastChild;
-
   _DepthPainter(this.depth, this.indentWidth, this.isLastChild);
 
   @override
@@ -35,7 +34,6 @@ class _DepthPainter extends CustomPainter {
     final paint = Paint()
       ..color = Colors.grey
       ..strokeWidth = 1.0;
-
     for (int i = 1; i < depth; i++) {
       final dx = i * indentWidth;
       canvas.drawLine(Offset(dx, 0), Offset(dx, size.height), paint);
@@ -43,7 +41,5 @@ class _DepthPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

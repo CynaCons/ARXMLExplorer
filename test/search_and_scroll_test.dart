@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
 
 import 'package:arxml_explorer/elementnodecontroller.dart';
-import 'package:arxml_explorer/main.dart';
+import 'package:arxml_explorer/main.dart' show XmlExplorerApp;
 
 void main() {
   group('Search and Scroll', () {

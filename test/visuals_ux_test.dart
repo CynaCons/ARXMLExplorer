@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/main.dart';
-import 'package:arxml_explorer/depth_indicator.dart';
+import 'package:arxml_explorer/main.dart' show XmlExplorerApp;
+import 'package:arxml_explorer/features/editor/view/widgets/tree/depth_indicator.dart';
 
 void main() {
   group('Visuals and UX', () {

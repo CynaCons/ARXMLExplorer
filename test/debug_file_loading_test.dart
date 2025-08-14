@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/main.dart';
-import 'package:arxml_explorer/elementnode.dart';
+import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
+import 'package:arxml_explorer/features/editor/editor.dart';
+import 'package:arxml_explorer/main.dart' show XmlExplorerApp;
 
 void main() {
   group('Debug File Loading', () {

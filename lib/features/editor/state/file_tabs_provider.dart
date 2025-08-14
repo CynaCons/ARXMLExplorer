@@ -1,12 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
+import '../editor.dart'; // For ARXMLTreeViewState
 import 'package:arxml_explorer/xsd_parser.dart';
-import 'package:arxml_explorer/arxml_validator.dart';
+import 'package:arxml_explorer/core/validation/issues.dart';
 import 'package:arxml_explorer/app_providers.dart';
-import 'package:arxml_explorer/workspace_indexer.dart';
-import 'package:arxml_explorer/ast_cache.dart';
+import '../../workspace/workspace.dart'; // For WorkspaceIndexNotifier
+import 'package:arxml_explorer/core/core.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
-import 'package:arxml_explorer/elementnode.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart' as fp;

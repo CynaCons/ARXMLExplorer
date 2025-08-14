@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xml/xml.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart' as fp;
-import 'main.dart' show fileTabsProvider; // for navigation via notifier
-import 'ref_normalizer.dart';
-import 'features/workspace/service/workspace_models.dart';
+import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart'
+    show fileTabsProvider;
+import 'package:arxml_explorer/features/workspace/service/workspace_models.dart';
+import 'package:arxml_explorer/core/refs/ref_normalizer.dart';
 
 class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
   WorkspaceIndexNotifier() : super(const WorkspaceIndexState());

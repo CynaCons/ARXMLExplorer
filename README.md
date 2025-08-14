@@ -1,24 +1,25 @@
 # ARXMLExplorer
 An AUTOSAR XML file viewer built with Flutter
 
-## 🎉 Project Status: ✅ FULLY STABILIZED
+## 🎉 Project Status: ⚠️ ACTIVE DEVELOPMENT
 
-**Latest Update:** All FilePicker mock issues resolved and comprehensive test suite implemented!
+**Latest Update:** Architecture refactoring in progress with core package extraction and comprehensive testing improvements.
 
 ### 🚀 Key Features
-- **ARXML File Viewer:** Interactive tree view for AUTOSAR XML files
-- **File Operations:** Open, create, and save ARXML files
-- **Search Functionality:** Find and navigate to specific XML elements
-- **Schema Validation:** XSD file loading and validation support
-- **Performance Optimized:** Handles large ARXML files efficiently
-- **Depth Indicators:** Visual representation of XML hierarchy
+- **ARXML File Viewer:** Interactive tree view for AUTOSAR XML files with navigation rail
+- **Multi-File Workspace:** Workspace management with cross-file reference resolution
+- **Live Validation:** Real-time XSD validation with contextual error reporting
+- **Advanced Editing:** Schema-compliant editing with undo/redo command system
+- **Search & Navigation:** Find elements with auto-scroll and keyboard navigation
+- **Performance Optimized:** Handles large ARXML files with AST caching and virtualization
+- **Modern UI:** Material Design with tab management and responsive layout
 
 ### ✅ Development Status
-- **Tests:** 23/23 passing ✅
-- **Build:** Clean compilation ✅  
-- **Analysis:** No errors, minor lint suggestions only ✅
-- **FilePicker Issues:** Completely resolved ✅
-- **Ready for Production:** Yes ✅
+- **Architecture:** Layered design with core package separation ✅
+- **Core Features:** File operations, editing, validation implemented ✅
+- **Testing:** Comprehensive test suite with integration tests ⚠️ (stabilization in progress)
+- **Build:** Clean compilation with analyzer compliance ✅
+- **Performance:** Optimized for large files with timeout management ✅
 
 ## 🛠️ Setup & Installation
 
@@ -51,69 +52,132 @@ The project includes comprehensive test coverage:
 # Run all tests
 flutter test
 
+# Run specific test categories
+flutter test test/core/                    # Core functionality tests
+flutter test test/features/editor/         # Editor feature tests
+flutter test test/integration/              # Integration tests
+flutter test test/performance/              # Performance benchmarks
+
 # Run static analysis
 flutter analyze
 
-# Test specific categories
-flutter test test/file_handling_test.dart
-flutter test test/performance_test.dart
-flutter test test/visuals_ux_test.dart
+# Fast timeout tests (for CI)
+flutter test --timeout=45s
 ```
 
-### Test Coverage
-- **File Handling:** ARXML loading, UI interactions
-- **Editing & Schema:** XML parsing, element management
-- **Visuals & UX:** Widget rendering, depth indicators  
-- **Performance:** Large file handling, parsing efficiency
-- **Search & Navigation:** Element finding and scrolling
+### Test Structure
+```
+test/
+├── core/                           # Core layer tests
+│   ├── xsd/                       # XSD parser tests
+│   ├── validation/                # Validation engine tests
+│   └── refs/                      # Reference normalization tests
+├── features/                      # Feature module tests
+│   ├── editor/                    # Editor functionality tests
+│   └── workspace/                 # Workspace management tests
+├── integration/                   # End-to-end integration tests
+│   └── file_loading_integration_test.dart
+├── performance/                   # Performance and load tests
+├── app/                          # Application-level tests
+├── support/                      # Test utilities and mocks
+└── res/                         # Test resources
+    ├── generic_ecu.arxml        # Sample ARXML files
+    └── test.xsd                 # Test XSD schemas
+```
+
+### Current Test Coverage
+- **Core Models & Parsing:** ElementNode, ARXML loader, XSD parser
+- **Validation Engine:** Schema validation, contextual error detection  
+- **Editor Features:** Add/edit/delete operations, command system
+- **UI Components:** Navigation rail, tab management, tree view
+- **Integration:** File loading workflows, provider state management
+- **Performance:** Large file handling, timeout optimization
 
 ## 📁 Project Structure
+
+### Application Architecture
 ```
 lib/
-├── main.dart                 # Main application entry
-├── arxmlloader.dart          # ARXML file loading logic
-├── elementnode.dart          # XML element data structure
-├── elementnodecontroller.dart # Element management controller
-├── elementnodewidget.dart    # XML tree view widgets
-├── depth_indicator.dart      # Visual depth indicators
-└── xsd_parser.dart          # XSD schema validation
+├── main.dart                     # Application entry point
+├── app_providers.dart           # Global Riverpod providers
+├── ui/                         # Shell UI components
+│   └── home_shell.dart         # Main navigation shell
+├── features/                   # Feature modules
+│   ├── editor/                 # ARXML editor feature
+│   │   ├── view/              # Editor views and widgets
+│   │   └── state/             # Editor state and providers
+│   ├── workspace/             # Workspace management
+│   ├── validation/            # Validation views and providers
+│   └── settings/              # Application settings
+├── core/                      # Core business logic (being migrated)
+│   ├── models/               # ElementNode and core models
+│   ├── xml/                  # ARXML parsing and serialization
+│   ├── xsd/                  # XSD schema parsing
+│   ├── validation/           # Validation engine
+│   └── refs/                 # Reference normalization
+└── packages/
+    └── arxml_core/           # Extracted core package
+        └── lib/src/          # Pure business logic
+```
 
-test/
-├── arxml_loader_test.dart    # Core XML parsing tests
-├── file_handling_test.dart   # File operations tests
-├── editing_schema_test.dart  # Editing functionality tests
-├── performance_test.dart     # Performance benchmarks
-├── visuals_ux_test.dart     # UI component tests
-├── search_and_scroll_test.dart # Search functionality tests
-└── res/                     # Test resource files
-    └── generic_ecu.arxml    # Sample ARXML data
+### Legacy Shims (Deprecated)
+```
+lib/
+├── elementnode.dart            # Re-exports core/models/
+├── arxmlloader.dart           # Re-exports core/xml/
+├── arxml_validator.dart       # Re-exports core/validation/
+├── xsd_parser.dart           # Re-exports core/xsd/
+└── ref_normalizer.dart       # Re-exports core/refs/
+```
+
+### Configuration Files
+```
+├── pubspec.yaml              # Dependencies and local packages
+├── analysis_options.yaml    # Dart analyzer + dart_code_metrics
+├── dart_test.yaml           # Global test timeout configuration
+├── PLAN.md                  # Detailed development roadmap
+├── PRD.md                   # Product requirements
+└── docs/architecture.md     # Technical architecture guide
 ```
 
 ## 🔧 Development Notes
 
-### Recent Major Fixes
-- **FilePicker Mock Issues:** Resolved compatibility problems with file_picker 8.0+
-- **Test Architecture:** Refactored from system dependency mocking to business logic testing
-- **API Compatibility:** Fixed ElementNodeController and DepthIndicator API mismatches
-- **Performance:** Optimized XML parsing and element management
+### Architecture Highlights
+- **Layered Design:** Presentation → Application → Core with strict dependency rules
+- **Package Extraction:** Core logic extracted to `packages/arxml_core` for reusability
+- **Command Pattern:** Structured editing with undo/redo support
+- **Riverpod State:** Reactive state management with provider composition
+- **Performance:** AST caching, incremental indexing, timeout optimization
 
-### Known Issues
-- Minor lint suggestions (performance optimizations, not functional issues)
-- No blocking issues for production use
+### Recent Major Improvements
+- **Modular Architecture:** Feature-based organization with barrel exports
+- **Core Package Split:** Reusable `arxml_core` package with pure business logic
+- **Enhanced Validation:** Context-aware XSD validation with value node filtering
+- **Test Stabilization:** Timeout management and bounded pump patterns
+- **UI Modernization:** Navigation rail, tab management, live validation toggles
+
+### Current Development Focus (PLAN.md)
+- **UI Polish:** Navigation rail redesign, AppBar consolidation
+- **Workspace Features:** Hierarchical directory tree, cross-file indexing
+- **Test Migration:** Moving tests to new feature-based structure
+- **Performance:** Editor navigation improvements, smooth scrolling
 
 ## 📖 Documentation
-- [Fix and Test Plan](FIX_AND_TEST_PLAN.md) - Detailed development progress
-- [Project Requirements](PRD.md) - Product requirements document
-- [Development Plan](PLAN.md) - Implementation roadmap
+- [Development Plan](PLAN.md) - Comprehensive implementation roadmap with completion tracking
+- [Product Requirements](PRD.md) - Product requirements and feature specifications
+- [Architecture Guide](docs/architecture.md) - Technical architecture and layer design
+- [Coding Rules](RULES.md) - Dependency rules and coding standards
 
 ## 🤝 Contributing
 1. Fork the repository
-2. Create a feature branch
-3. Run tests: `flutter test`
-4. Submit a pull request
+2. Create a feature branch following the modular architecture
+3. Follow layer dependency rules (see `docs/architecture.md`)
+4. Run tests: `flutter test`
+5. Ensure analyzer compliance: `flutter analyze`
+6. Submit a pull request
 
 ## 📄 License
 See [LICENSE](LICENSE) file for details.
 
 ---
-**Ready for production use! 🚀**
+**Active development - production-ready core with ongoing UI enhancements! 🚀**

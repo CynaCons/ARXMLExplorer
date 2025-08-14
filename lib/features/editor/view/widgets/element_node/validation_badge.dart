@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
+import 'package:arxml_explorer/core/validation/issues.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/elementnode.dart';
 import 'package:arxml_explorer/app_providers.dart';
-import 'package:arxml_explorer/arxml_validator.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
+import '../../../editor.dart'; // For ARXMLTreeViewState
 
 class ValidationBadge extends ConsumerWidget {
   final ElementNode node;

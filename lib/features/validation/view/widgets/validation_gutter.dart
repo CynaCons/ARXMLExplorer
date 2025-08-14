@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:arxml_explorer/arxml_validator.dart';
+import 'package:arxml_explorer/core/validation/issues.dart';
 
 /// ValidationGutter displays aggregate issue markers aligned roughly to
 /// vertical positions of issues (heuristic based on path depth).

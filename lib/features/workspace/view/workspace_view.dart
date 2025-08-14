@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart' as fp;
-import 'package:arxml_explorer/workspace_indexer.dart';
+import '../workspace.dart'; // For WorkspaceIndexNotifier
 import 'package:arxml_explorer/features/workspace/service/workspace_models.dart';
 import 'package:arxml_explorer/ui/home_shell.dart' show navRailIndexProvider;
 
@@ -226,14 +226,20 @@ class _WorkspaceViewState extends ConsumerState<WorkspaceView> {
                               // After opening, request navigation to Editor view (index 0)
                               // Using navRailIndexProvider via context read if available
                               try {
-                                final container = ProviderScope.containerOf(context, listen: false);
-                                container.read(navRailIndexProvider.notifier).state = 0;
+                                final container = ProviderScope.containerOf(
+                                    context,
+                                    listen: false);
+                                container
+                                    .read(navRailIndexProvider.notifier)
+                                    .state = 0;
                               } catch (_) {}
                             },
                             child: ListTile(
                               dense: true,
-                              title: Text(fp.split(Platform.pathSeparator).last),
-                              subtitle: Text(fp, overflow: TextOverflow.ellipsis),
+                              title:
+                                  Text(fp.split(Platform.pathSeparator).last),
+                              subtitle:
+                                  Text(fp, overflow: TextOverflow.ellipsis),
                               leading: const Icon(Icons.description),
                               onTap: () => widget.onOpenFile(fp),
                             ),

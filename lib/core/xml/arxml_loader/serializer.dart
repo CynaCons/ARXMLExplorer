@@ -1,5 +1,5 @@
 import 'package:xml/xml.dart';
-import 'package:arxml_explorer/elementnode.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
 
 class ArxmlSerializer {
   const ArxmlSerializer();

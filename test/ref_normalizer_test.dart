@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/ref_normalizer.dart';
+import 'package:arxml_core/arxml_core.dart' show RefNormalizer;
 
 void main() {
   group('RefNormalizer.normalize', () {

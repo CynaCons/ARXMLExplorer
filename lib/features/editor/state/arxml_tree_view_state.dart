@@ -1,7 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/xsd_parser.dart';
-import 'elementnode.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
 import 'dart:collection';
+import 'package:arxml_explorer/features/editor/state/commands/arxml_edit_command.dart';
+import 'package:arxml_explorer/features/editor/state/commands/edit_value_command.dart';
+import 'package:arxml_explorer/features/editor/state/commands/rename_tag_command.dart';
+import 'package:arxml_explorer/features/editor/state/commands/add_child_command.dart';
+import 'package:arxml_explorer/features/editor/state/commands/delete_node_command.dart';
+import 'package:arxml_explorer/features/editor/state/commands/convert_type_command.dart';
+import 'package:arxml_explorer/features/editor/state/commands/safe_rename_short_name_command.dart';
 
 class ArxmlTreeState {
   final List<ElementNode> rootNodes;
@@ -41,161 +48,6 @@ final arxmlTreeStateProvider = StateNotifierProvider.autoDispose
         (ref, initialNodes) {
   return ArxmlTreeStateNotifier(initialNodes);
 });
-
-abstract class ArxmlEditCommand {
-  void apply();
-  void revert();
-  String description();
-}
-
-class EditValueCommand implements ArxmlEditCommand {
-  final ElementNode node;
-  final String oldValue;
-  final String newValue;
-  EditValueCommand(this.node, this.oldValue, this.newValue);
-  @override
-  void apply() {
-    node.children.isNotEmpty
-        ? node.children.first.elementText = newValue
-        : node.elementText = newValue;
-  }
-
-  @override
-  void revert() {
-    node.children.isNotEmpty
-        ? node.children.first.elementText = oldValue
-        : node.elementText = oldValue;
-  }
-
-  @override
-  String description() => 'Edit value';
-}
-
-class RenameTagCommand implements ArxmlEditCommand {
-  final ElementNode node;
-  final String oldTag;
-  final String newTag;
-  RenameTagCommand(this.node, this.oldTag, this.newTag);
-  @override
-  void apply() {
-    node.elementText = newTag;
-  }
-
-  @override
-  void revert() {
-    node.elementText = oldTag;
-  }
-
-  @override
-  String description() => 'Rename tag';
-}
-
-class AddChildCommand implements ArxmlEditCommand {
-  final ElementNode parent;
-  final ElementNode child;
-  AddChildCommand(this.parent, this.child);
-  @override
-  void apply() {
-    parent.children = [...parent.children, child];
-    child.parent = parent;
-  }
-
-  @override
-  void revert() {
-    parent.children = parent.children.where((c) => c != child).toList();
-  }
-
-  @override
-  String description() => 'Add child';
-}
-
-class DeleteNodeCommand implements ArxmlEditCommand {
-  final ElementNode parent;
-  final ElementNode node;
-  final int index;
-  DeleteNodeCommand(this.parent, this.node, this.index);
-  @override
-  void apply() {
-    parent.children = [...parent.children]..remove(node);
-  }
-
-  @override
-  void revert() {
-    final list = [...parent.children];
-    list.insert(index, node);
-    parent.children = list;
-    node.parent = parent;
-  }
-
-  @override
-  String description() => 'Delete node';
-}
-
-class ConvertTypeCommand implements ArxmlEditCommand {
-  final ElementNode node;
-  final String oldTag;
-  final String newTag;
-  final List<ElementNode> removedChildren;
-  ConvertTypeCommand(this.node, this.oldTag, this.newTag, this.removedChildren);
-  @override
-  void apply() {
-    node.elementText = newTag;
-    // children already pruned in constructor logic
-  }
-
-  @override
-  void revert() {
-    node.elementText = oldTag;
-    if (removedChildren.isNotEmpty) {
-      node.children = [...node.children, ...removedChildren];
-      for (final c in removedChildren) {
-        c.parent = node;
-      }
-    }
-  }
-
-  @override
-  String description() => 'Convert type';
-}
-
-class SafeRenameShortNameCommand implements ArxmlEditCommand {
-  final ElementNode shortNameNode; // node with elementText == 'SHORT-NAME'
-  final String oldValue;
-  final String newValue;
-  final List<ElementNode> updatedRefNodes;
-  final List<String> oldRefValues;
-  final List<String> newRefValues;
-  SafeRenameShortNameCommand(this.shortNameNode, this.oldValue, this.newValue,
-      this.updatedRefNodes, this.oldRefValues, this.newRefValues);
-  @override
-  void apply() {
-    if (shortNameNode.children.isNotEmpty) {
-      shortNameNode.children.first.elementText = newValue;
-    }
-    for (var i = 0; i < updatedRefNodes.length; i++) {
-      final n = updatedRefNodes[i];
-      if (n.children.isNotEmpty) {
-        n.children.first.elementText = newRefValues[i];
-      }
-    }
-  }
-
-  @override
-  void revert() {
-    if (shortNameNode.children.isNotEmpty) {
-      shortNameNode.children.first.elementText = oldValue;
-    }
-    for (var i = 0; i < updatedRefNodes.length; i++) {
-      final n = updatedRefNodes[i];
-      if (n.children.isNotEmpty) {
-        n.children.first.elementText = oldRefValues[i];
-      }
-    }
-  }
-
-  @override
-  String description() => 'Safe rename SHORT-NAME';
-}
 
 class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
   final List<ElementNode> initialNodes;
@@ -279,10 +131,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
 
-  bool _isStructural(ArxmlEditCommand cmd) =>
-      cmd is AddChildCommand ||
-      cmd is DeleteNodeCommand ||
-      cmd is ConvertTypeCommand;
+  bool _isStructural(ArxmlEditCommand cmd) => cmd.isStructural();
 
   void undo() {
     if (_undoStack.isEmpty) return;
@@ -335,8 +184,17 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     if (parent == null) return;
     final newNode = ElementNode(
         elementText: elementName, depth: parent.depth + 1, children: []);
+    final wasCollapsed = parent.isCollapsed;
     _pushCommand(AddChildCommand(parent, newNode));
+    // Expand parent if it was collapsed so the new child becomes visible
+    if (wasCollapsed) {
+      parent.isCollapsed = false;
+    }
     _rebuildFlatMap();
+    // After rebuild, select the newly added node
+    if (newNode.id != -1) {
+      state = state.copyWith(selectedNodeId: newNode.id);
+    }
   }
 
   void deleteNode(int nodeId) {

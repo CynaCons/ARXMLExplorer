@@ -1,5 +1,5 @@
 import 'package:xml/xml.dart';
-import 'package:arxml_explorer/elementnode.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
 
 class ArxmlParser {
   const ArxmlParser();
@@ -43,6 +43,7 @@ class ArxmlParser {
           elementText: textNode.text,
           children: const [],
           depth: currentDepth + 1,
+          isValueNode: true,
         );
         newChildren.add(textChild);
       } else {

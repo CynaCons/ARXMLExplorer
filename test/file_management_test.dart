@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/main.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
+import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
+import 'package:arxml_explorer/features/editor/editor.dart';
 
 void main() {
   group('File Management Notifier', () {
@@ -22,9 +22,12 @@ void main() {
 
     test('closeFile removes a tab and updates active index', () {
       // Add dummy tabs
-      final tab1 = FileTabState(path: 'file1.arxml', treeStateProvider: arxmlTreeStateProvider([]));
-      final tab2 = FileTabState(path: 'file2.arxml', treeStateProvider: arxmlTreeStateProvider([]));
-      final tab3 = FileTabState(path: 'file3.arxml', treeStateProvider: arxmlTreeStateProvider([]));
+      final tab1 = FileTabState(
+          path: 'file1.arxml', treeStateProvider: arxmlTreeStateProvider([]));
+      final tab2 = FileTabState(
+          path: 'file2.arxml', treeStateProvider: arxmlTreeStateProvider([]));
+      final tab3 = FileTabState(
+          path: 'file3.arxml', treeStateProvider: arxmlTreeStateProvider([]));
       notifier.state = [tab1, tab2, tab3];
       container.read(activeTabIndexProvider.notifier).state = 2;
 
@@ -38,8 +41,9 @@ void main() {
       expect(container.read(activeTabIndexProvider), 1);
     });
 
-     test('closeFile handles closing the last tab', () {
-      final tab1 = FileTabState(path: 'file1.arxml', treeStateProvider: arxmlTreeStateProvider([]));
+    test('closeFile handles closing the last tab', () {
+      final tab1 = FileTabState(
+          path: 'file1.arxml', treeStateProvider: arxmlTreeStateProvider([]));
       notifier.state = [tab1];
       container.read(activeTabIndexProvider.notifier).state = 0;
 

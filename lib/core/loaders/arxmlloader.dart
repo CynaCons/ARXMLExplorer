@@ -1,9 +1,9 @@
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'dart:developer' as developer;
-import 'elementnode.dart';
-import 'core/xml/arxml_loader/parser.dart';
-import 'core/xml/arxml_loader/serializer.dart';
+import '../models/element_node.dart';
+import '../xml/arxml_loader/parser.dart';
+import '../xml/arxml_loader/serializer.dart';
 
 class ARXMLFileLoader {
   const ARXMLFileLoader();

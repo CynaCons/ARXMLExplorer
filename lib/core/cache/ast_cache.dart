@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/elementnode.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
 
 class AstCacheEntry {
   final List<ElementNode> nodes;

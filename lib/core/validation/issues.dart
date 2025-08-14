@@ -1,5 +1,5 @@
-import 'package:arxml_explorer/elementnode.dart';
-import 'package:arxml_explorer/xsd_parser.dart';
+import '../models/element_node.dart';
+import '../../../xsd_parser.dart';
 
 enum ValidationSeverity { error, warning, info }
 
@@ -7,7 +7,7 @@ class ValidationIssue {
   final String path;
   final String message;
   final List<String> suggestions;
-  final int? nodeId; // precise node mapping when available
+  final int? nodeId;
   final ValidationSeverity severity;
   ValidationIssue({
     required this.path,
@@ -26,24 +26,16 @@ class ValidationOptions {
 class ArxmlValidator {
   const ArxmlValidator();
 
-  List<ValidationIssue> validate(
-    List<ElementNode> roots,
-    XsdParser parser, {
-    ValidationOptions options = const ValidationOptions(),
-  }) {
+  List<ValidationIssue> validate(List<ElementNode> roots, XsdParser parser,
+      {ValidationOptions options = const ValidationOptions()}) {
     final issues = <ValidationIssue>[];
 
-    // Build parent pointers locally (ElementNode.parent is set by state normally)
     void assignParents(ElementNode node, ElementNode? parent) {
       node.parent = parent;
-      for (final c in node.children) {
-        assignParents(c, node);
-      }
+      for (final c in node.children) assignParents(c, node);
     }
 
-    for (final r in roots) {
-      assignParents(r, null);
-    }
+    for (final r in roots) assignParents(r, null);
 
     String buildPath(ElementNode node) {
       final segs = <String>[];
@@ -56,40 +48,33 @@ class ArxmlValidator {
     }
 
     void traverse(ElementNode node) {
-      // Optionally skip ADMIN-DATA subtree entirely
-      if (options.ignoreAdminData && node.elementText == 'ADMIN-DATA') {
+      if (options.ignoreAdminData && node.elementText == 'ADMIN-DATA') return;
+      // Skip pure value/text nodes
+      if (node.isValueNode) {
         return;
       }
-
-      // Skip pure text leaf nodes
-      final isTextLeaf = node.children.isEmpty &&
-          node.elementText.trim().isNotEmpty &&
-          !node.elementText.contains('<') &&
-          !node.elementText.contains('>');
+      // Skip validation for the synthetic text child under a leaf element
+      final isTextLeaf =
+          node.children.length == 1 && node.children.first.isValueNode;
       if (!isTextLeaf && node.parent != null) {
         final parentTag = node.parent!.elementText;
-        final allowed = parser.getValidChildElements(parentTag);
+        // Use contextual lookup to reduce false positives for generic names (e.g., ELEMENTS)
+        final allowed = parser.getValidChildElements(parentTag,
+            contextElementName: parentTag);
         if (!allowed.contains(node.elementText)) {
-          final suggestions = allowed.take(5).toList();
           issues.add(ValidationIssue(
             path: buildPath(node),
             message:
                 'Element "${node.elementText}" is not allowed under "$parentTag"',
-            suggestions: suggestions,
+            suggestions: allowed.take(5).toList(),
             nodeId: node.id,
-            severity: ValidationSeverity.error,
           ));
         }
       }
-      for (final c in node.children) {
-        traverse(c);
-      }
+      for (final c in node.children) traverse(c);
     }
 
-    for (final r in roots) {
-      traverse(r);
-    }
-
+    for (final r in roots) traverse(r);
     return issues;
   }
 }

@@ -3,13 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:arxml_explorer/app_providers.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
-import 'package:arxml_explorer/arxml_validator.dart';
+import 'package:arxml_explorer/features/editor/editor.dart'; // For ARXMLTreeViewState
+import 'package:arxml_explorer/core/validation/issues.dart';
 import 'package:arxml_explorer/features/workspace/view/workspace_view.dart';
 import 'package:arxml_explorer/features/validation/view/validation_view.dart';
 import 'package:arxml_explorer/features/editor/view/editor_view.dart';
-import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
-import 'package:arxml_explorer/workspace_indexer.dart';
+import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart'
+    show
+        fileTabsProvider,
+        activeTabIndexProvider,
+        activeTabProvider,
+        loadingStateProvider,
+        validationSchedulerProvider,
+        diagnosticsProvider;
+import 'package:arxml_explorer/features/workspace/workspace.dart'; // For WorkspaceIndexNotifier
 
 // Shell-level providers
 final navRailIndexProvider = StateProvider<int>((ref) => 0);
@@ -65,11 +72,9 @@ class _HomeShellState extends ConsumerState<HomeShell>
     final activeTab = ref.watch(activeTabProvider);
     final notifier = ref.read(fileTabsProvider.notifier);
     final isLoading = ref.watch(loadingStateProvider);
-    final diagnosticsOn = ref.watch(diagnosticsProvider);
     final liveValidationOn = ref.watch(liveValidationProvider);
     final navIndex = ref.watch(navRailIndexProvider);
     final issues = ref.watch(validationIssuesProvider);
-    final highContrast = ref.watch(highContrastUiProvider);
 
     _syncTabController(tabs, activeIndex);
 
@@ -135,18 +140,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
               icon: const Icon(Icons.file_present),
               tooltip: 'Select XSD schema',
               onPressed: notifier.pickXsdForActiveTab),
-          IconButton(
-            icon: Icon(
-                diagnosticsOn ? Icons.bug_report : Icons.bug_report_outlined,
-                color: diagnosticsOn
-                    ? Theme.of(context).colorScheme.secondary
-                    : Colors.white),
-            tooltip: diagnosticsOn
-                ? 'Verbose XSD diagnostics: ON'
-                : 'Verbose XSD diagnostics: OFF',
-            onPressed: () =>
-                ref.read(fileTabsProvider.notifier).toggleDiagnostics(),
-          ),
           IconButton(
             icon: Icon(
                 liveValidationOn
@@ -261,28 +254,60 @@ class _HomeShellState extends ConsumerState<HomeShell>
                                   duration: const Duration(milliseconds: 180),
                                   curve: Curves.easeOutCubic,
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
+                                      horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(
                                     color: _tabController != null &&
                                             tabs.indexOf(tab) ==
                                                 _tabController!.index
-                                        ? Colors.white.withOpacity(0.15)
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(12),
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .surface
+                                            .withOpacity(0.95)
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .surfaceVariant
+                                            .withOpacity(0.55),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: tabs.indexOf(tab) ==
+                                              _tabController!.index
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withOpacity(0.6)
+                                          : Theme.of(context)
+                                              .dividerColor
+                                              .withOpacity(0.3),
+                                      width: 1,
+                                    ),
+                                    boxShadow: tabs.indexOf(tab) ==
+                                            _tabController!.index
+                                        ? [
+                                            BoxShadow(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                                    .withOpacity(0.25),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 2))
+                                          ]
+                                        : [],
                                   ),
                                   child: Row(children: [
                                     Text(
-                                        tab.path
-                                            .split(Platform.pathSeparator)
-                                            .last,
-                                        style: TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: _tabController !=
-                                                        null &&
-                                                    tabs.indexOf(tab) ==
-                                                        _tabController!.index
-                                                ? FontWeight.w700
-                                                : FontWeight.w500)),
+                                      tab.path
+                                          .split(Platform.pathSeparator)
+                                          .last,
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: tabs.indexOf(tab) ==
+                                                _tabController!.index
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        letterSpacing: 0.15,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                     if (tab.isDirty)
                                       const Padding(
                                         padding: EdgeInsets.only(left: 6.0),
@@ -294,9 +319,13 @@ class _HomeShellState extends ConsumerState<HomeShell>
                                   ]),
                                 ),
                                 if (tab.xsdPath != null)
-                                  const Padding(
-                                      padding: EdgeInsets.only(left: 6.0),
-                                      child: Icon(Icons.rule, size: 14))
+                                  Padding(
+                                      padding: const EdgeInsets.only(left: 6.0),
+                                      child: Icon(Icons.rule,
+                                          size: 14,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary)),
                               ]),
                             ))
                         .toList(),
@@ -306,7 +335,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
       ),
       body: Row(
         children: [
-          // Redesigned navigation rail panel
+          // Navigation rail panel (high contrast removed)
           Container(
             width: MediaQuery.of(context).size.width >= 1000 ? 96 : 78,
             decoration: BoxDecoration(
@@ -330,17 +359,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
                   : NavigationRailLabelType.selected,
               useIndicator: true,
               groupAlignment: -0.9,
-              indicatorColor: highContrast
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.primary.withOpacity(0.18),
-              indicatorShape: highContrast
-                  ? RoundedRectangleBorder(
-                      side: BorderSide(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          width: 2),
-                      borderRadius: BorderRadius.circular(4))
-                  : RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+              indicatorColor:
+                  Theme.of(context).colorScheme.primary.withOpacity(0.18),
+              indicatorShape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
               destinations: [
                 NavigationRailDestination(
                   icon: _AnimatedRailDestination(
@@ -349,7 +371,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
                     selectedIcon: Icons.article,
                     label: 'Editor',
                     selected: navIndex == 0,
-                    highContrast: highContrast,
                   ),
                   selectedIcon: _AnimatedRailDestination(
                     tooltip: 'Editor',
@@ -357,7 +378,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
                     selectedIcon: Icons.article,
                     label: 'Editor',
                     selected: navIndex == 0,
-                    highContrast: highContrast,
                   ),
                   label: const SizedBox.shrink(),
                 ),
@@ -368,7 +388,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
                     selectedIcon: Icons.folder,
                     label: 'Workspace',
                     selected: navIndex == 1,
-                    highContrast: highContrast,
                   ),
                   selectedIcon: _AnimatedRailDestination(
                     tooltip: 'Workspace',
@@ -376,7 +395,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
                     selectedIcon: Icons.folder,
                     label: 'Workspace',
                     selected: navIndex == 1,
-                    highContrast: highContrast,
                   ),
                   label: const SizedBox.shrink(),
                 ),
@@ -387,7 +405,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
                     selectedIcon: Icons.rule,
                     label: 'Validation',
                     selected: navIndex == 2,
-                    highContrast: highContrast,
                   ),
                   selectedIcon: _AnimatedRailDestination(
                     tooltip: 'Validation',
@@ -395,7 +412,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
                     selectedIcon: Icons.rule,
                     label: 'Validation',
                     selected: navIndex == 2,
-                    highContrast: highContrast,
                   ),
                   label: const SizedBox.shrink(),
                 ),
@@ -406,7 +422,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
                     selectedIcon: Icons.settings,
                     label: 'Settings',
                     selected: navIndex == 3,
-                    highContrast: highContrast,
                   ),
                   selectedIcon: _AnimatedRailDestination(
                     tooltip: 'Settings',
@@ -414,37 +429,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
                     selectedIcon: Icons.settings,
                     label: 'Settings',
                     selected: navIndex == 3,
-                    highContrast: highContrast,
                   ),
                   label: const SizedBox.shrink(),
                 ),
               ],
-              leading: Padding(
-                padding: const EdgeInsets.only(top: 12.0, bottom: 24.0),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primaryContainer
-                            .withOpacity(0.35),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text('ARX',
-                          style: TextStyle(
-                              fontSize: 14,
-                              letterSpacing: 1.0,
-                              fontWeight: FontWeight.w700,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onPrimaryContainer)),
-                    ),
-                  ],
-                ),
-              ),
+              leading: const SizedBox(height: 12), // removed stray ARX badge
               trailing: Padding(
                 padding: const EdgeInsets.only(bottom: 16.0),
                 child: Column(
@@ -541,14 +530,6 @@ class _HomeShellState extends ConsumerState<HomeShell>
                       value: ref.watch(showResourceHudProvider),
                       onChanged: (v) =>
                           ref.read(showResourceHudProvider.notifier).state = v),
-                  const Divider(),
-                  SwitchListTile(
-                      title: const Text('High contrast UI mode'),
-                      subtitle:
-                          const Text('Solid indicators and stronger outlines'),
-                      value: ref.watch(highContrastUiProvider),
-                      onChanged: (v) =>
-                          ref.read(highContrastUiProvider.notifier).state = v),
                 ]);
               }
               return isLoading
@@ -558,7 +539,15 @@ class _HomeShellState extends ConsumerState<HomeShell>
                           tabController: _tabController!,
                           itemScrollController: itemScrollController,
                           itemPositionsListener: itemPositionsListener)
-                      : const SizedBox.shrink();
+                      : const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24.0),
+                            child: Text(
+                              'Open a file to begin',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                          ),
+                        );
             }),
           ),
         ],
@@ -583,14 +572,12 @@ class _AnimatedRailDestination extends StatefulWidget {
   final IconData selectedIcon;
   final String label;
   final bool selected;
-  final bool highContrast;
   const _AnimatedRailDestination({
     required this.tooltip,
     required this.icon,
     required this.selectedIcon,
     required this.label,
     required this.selected,
-    required this.highContrast,
   });
 
   @override

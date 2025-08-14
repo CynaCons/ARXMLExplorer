@@ -1,4 +1,4 @@
-import 'package:arxml_explorer/ref_normalizer.dart';
+import 'package:arxml_explorer/core/refs/ref_normalizer.dart';
 
 class WorkspaceTarget {
   final String filePath;

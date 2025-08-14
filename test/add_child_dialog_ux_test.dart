@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/features/editor/view/widgets/element_node/element_node_widget.dart';
-import 'package:arxml_explorer/elementnode.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
+import 'package:arxml_explorer/core/models/element_node.dart';
+import 'package:arxml_explorer/features/editor/editor.dart';
 
 void main() {
   testWidgets('Add Child dialog shows validation hint when empty',

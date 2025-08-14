@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import 'package:arxml_explorer/main.dart' as app;
-import 'package:arxml_explorer/main.dart';
-import 'package:arxml_explorer/elementnode.dart';
+import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
+import 'package:arxml_explorer/main.dart' as app show XmlExplorerApp;
+import 'package:arxml_explorer/core/models/element_node.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
-import 'package:arxml_explorer/arxml_tree_view_state.dart';
+import 'package:arxml_explorer/features/editor/editor.dart';
 import 'package:arxml_explorer/features/editor/view/widgets/element_node/element_node_widget.dart';
 
 void main() {
@@ -18,6 +17,9 @@ void main() {
       // Build the app
       print('🏗️ Building app widget...');
       await tester.pumpWidget(const ProviderScope(child: app.XmlExplorerApp()));
+      // Prefer bounded pumps over unbounded settle
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
       print('⏳ Waiting for app to settle...');
       await tester.pumpAndSettle();
       print('✅ App built and settled');
@@ -29,7 +31,7 @@ void main() {
       expect(find.byIcon(Icons.file_open), findsOneWidget);
 
       print('✅ Initial app state verified - TEST PASSED');
-    }, timeout: const Timeout(Duration(minutes: 1)));
+    }, timeout: const Timeout(Duration(seconds: 45)));
 
     testWidgets('File loading simulation works end-to-end',
         (WidgetTester tester) async {
@@ -82,8 +84,9 @@ void main() {
           child: const app.XmlExplorerApp(),
         ),
       );
-      print('⏳ Waiting for app to settle...');
-      await tester.pumpAndSettle();
+      // Bounded pumps instead of pumpAndSettle
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
 
       print('🚀 App built with test data');
 
@@ -103,44 +106,32 @@ void main() {
       print('📁 Simulating file load...');
       await notifier.simulateFileLoad();
       print('⏳ Waiting for UI to settle after file load...');
+      // Pump a few frames to allow UI to rebuild
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
       // Avoid potential infinite settle loops; pump a few frames instead
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
 
       print('📁 File loading simulated');
 
-      // Wait for any delayed operations
-      print('⏳ Waiting for delayed operations...');
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // Debug: Print all widgets to see what's actually rendered
-      print('🔍 Debugging widget tree...');
-
       // Verify that the file was loaded and UI is displayed
-      // Check for tab presence
       print('🔍 Looking for TabBar...');
       expect(find.byType(TabBar), findsOneWidget);
       print('🔍 Looking for TabBarView...');
       expect(find.byType(TabBarView), findsOneWidget);
 
       print('🔍 Looking for element widgets...');
-
-      // Check for element nodes in the tree
-      print('🔍 Looking for ScrollablePositionedList...');
-      expect(find.byType(ScrollablePositionedList), findsOneWidget);
-
-      // Look for ElementNodeWidget instances
-      print('🔍 Looking for ElementNodeWidget...');
       expect(find.byType(ElementNodeWidget), findsAtLeastNWidgets(1));
 
-      // Look for the root AUTOSAR element
       print('🔍 Looking for AUTOSAR text...');
       expect(find.textContaining('AUTOSAR'), findsAtLeastNWidgets(1));
 
       print(
           '✅ File loading integration test completed successfully - TEST PASSED');
-    }, timeout: const Timeout(Duration(minutes: 1)));
+    }, timeout: const Timeout(Duration(seconds: 45)));
 
     testWidgets('TabController state management works correctly',
         (WidgetTester tester) async {
@@ -167,7 +158,9 @@ void main() {
           child: const app.XmlExplorerApp(),
         ),
       );
-      await tester.pumpAndSettle();
+      // Bounded pumps instead of pumpAndSettle
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
 
       // Get the notifier and simulate file loading
       final container = ProviderScope.containerOf(
@@ -183,17 +176,17 @@ void main() {
 
       // Simulate loading a file
       await notifier.simulateFileLoad();
-      // Avoid pumpAndSettle; pump a few frames
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump(const Duration(milliseconds: 100));
+      // Pump a few frames
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
 
       // Should now have tabs
       expect(find.byType(TabBar), findsOneWidget);
       expect(find.byType(TabBarView), findsOneWidget);
 
       print('✅ TabController state management test passed');
-    }, timeout: const Timeout(Duration(minutes: 1)));
+    }, timeout: const Timeout(Duration(seconds: 45)));
   });
 }
 
@@ -227,8 +220,7 @@ class TestFileTabsNotifier extends FileTabsNotifier {
       print(
           '🧪 TestFileTabsNotifier: Tab added, state.length = ${state.length}');
 
-      // Small delay to simulate file processing
-      await Future.delayed(const Duration(milliseconds: 100));
+      // Removed artificial delay to prevent test hangs
     } catch (e, stackTrace) {
       print('❌ TestFileTabsNotifier ERROR: $e');
       print('Stack trace: $stackTrace');

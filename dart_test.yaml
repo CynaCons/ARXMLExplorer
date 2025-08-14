@@ -1,0 +1,6 @@
+# Global test configuration for Dart/Flutter tests
+# Make per-test timeouts faster by default across the suite.
+# Valid formats include duration strings like "30s" or multipliers like "1x".
+# See: https://pub.dev/packages/test#configuration
+
+timeout: 45s

@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:arxml_explorer/xsd_parser.dart';
 import 'package:arxml_explorer/arxmlloader.dart';
-import 'package:arxml_explorer/arxml_validator.dart';
+import 'package:arxml_explorer/core/validation/issues.dart';
 
 void main() {
   test('Validator reports invalid child under parent based on schema',
