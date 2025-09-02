@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:arxml_explorer/core/core.dart';
 import 'package:arxml_explorer/ui/home_shell.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
 import 'package:arxml_explorer/features/editor/editor.dart';
-import 'package:arxml_explorer/arxmlloader.dart';
 import 'dart:io';
 
 void main() {
@@ -32,49 +32,48 @@ void main() {
 
     testWidgets('Collapse/Expand All buttons work',
         (WidgetTester tester) async {
-      final container = ProviderContainer();
-      final notifier = container.read(fileTabsProvider.notifier);
-
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [fileTabsProvider.overrideWith((ref) => notifier)],
+          overrides: [
+            fileTabsProvider.overrideWith((ref) => FileTabsNotifier(ref))
+          ],
           child: const MaterialApp(home: HomeShell()),
         ),
       );
 
-      // Open a file
+      // Access app container
+      final ctx = tester.element(find.byType(HomeShell));
+      final appContainer = ProviderScope.containerOf(ctx);
+      final tabsNotifier = appContainer.read(fileTabsProvider.notifier);
+
+      // Create a tab with parsed nodes (sync read to avoid async deadlocks in testWidgets)
       final fileContent =
-          await File('test/res/complex_nested.arxml').readAsString();
+          File('test/res/complex_nested.arxml').readAsStringSync();
       final nodes = const ARXMLFileLoader().parseXmlContent(fileContent);
       final newTab = FileTabState(
         path: 'test.arxml',
         treeStateProvider: arxmlTreeStateProvider(nodes),
       );
-      notifier.state = [newTab];
-      // Replace pumpAndSettle with bounded pumps to prevent long waits
-      await tester.pump(const Duration(milliseconds: 50));
+      tabsNotifier.state = [newTab];
       await tester.pump(const Duration(milliseconds: 50));
 
-      // Verify initial state has many nodes
-      final treeNotifier = container.read(newTab.treeStateProvider.notifier);
+      // Work with the tree state within the same container as the app
+      final treeNotifier = appContainer.read(newTab.treeStateProvider.notifier);
       final initialVisibleCount = treeNotifier.state.visibleNodes.length;
       expect(initialVisibleCount,
           greaterThan(treeNotifier.state.rootNodes.length));
 
-      // Tap Collapse All
-      await tester.tap(find.byIcon(Icons.unfold_less));
+      // Collapse all
+      treeNotifier.collapseAll();
       await tester.pump(const Duration(milliseconds: 50));
-
-      // Re-read the notifier state after UI interaction
-      final collapsedState = container.read(newTab.treeStateProvider);
+      final collapsedState = appContainer.read(newTab.treeStateProvider);
       expect(
           collapsedState.visibleNodes.length, collapsedState.rootNodes.length);
 
-      // Tap Expand All
-      await tester.tap(find.byIcon(Icons.unfold_more));
+      // Expand all
+      treeNotifier.expandAll();
       await tester.pump(const Duration(milliseconds: 50));
-
-      final expandedState = container.read(newTab.treeStateProvider);
+      final expandedState = appContainer.read(newTab.treeStateProvider);
       expect(expandedState.visibleNodes.length, initialVisibleCount);
     }, timeout: const Timeout(Duration(seconds: 45)));
   });

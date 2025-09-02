@@ -21,7 +21,8 @@ class ArxmlParser {
 
     while (stack.isNotEmpty) {
       final (currentElement, parentChildren, currentDepth) = stack.removeLast();
-      final elementText = currentElement.name.toString();
+      // Use local name to avoid namespace URI prefixes in the element text
+      final elementText = currentElement.name.local;
       final newChildren = <ElementNode>[];
 
       final newNode = ElementNode(

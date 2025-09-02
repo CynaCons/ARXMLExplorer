@@ -9,10 +9,167 @@ import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart'
 import 'package:arxml_explorer/features/workspace/service/workspace_models.dart';
 import 'package:arxml_explorer/core/refs/ref_normalizer.dart';
 
+// _DirNode no longer used after migrating to lazy hydration
+
 class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
   WorkspaceIndexNotifier() : super(const WorkspaceIndexState());
   StreamSubscription<FileSystemEvent>? _watchSub;
   Timer? _debounce;
+
+  // Build an empty root node (children will be hydrated lazily)
+  WorkspaceTreeNode _buildRootShallow(String rootDir) {
+    return WorkspaceTreeNode(
+      name: rootDir.split(Platform.pathSeparator).last,
+      fullPath: rootDir,
+      kind: WorkspaceNodeKind.folder,
+      children: const [],
+      expanded: true,
+    );
+  }
+
+  // Compute immediate children for a directory from current fileStatus map
+  List<WorkspaceTreeNode> _hydrateChildren(String dirPath,
+      [Map<String, IndexStatus>? fileStatus]) {
+    final sep = Platform.pathSeparator;
+    String normalize(String p) => p.replaceAll('\\', sep).replaceAll('/', sep);
+    final dirN = normalize(dirPath);
+    final prefix = dirN.endsWith(sep) ? dirN : dirN + sep;
+
+    final childDirs = <String>{};
+    final files = <WorkspaceTreeNode>[];
+    final entries = (fileStatus ?? state.fileStatus).entries;
+    for (final entry in entries) {
+      final pathN = normalize(entry.key);
+      if (!pathN.startsWith(prefix)) continue;
+      final rel = pathN.substring(prefix.length);
+      if (rel.isEmpty) continue;
+      final parts = rel.split(sep).where((s) => s.isNotEmpty).toList();
+      if (parts.isEmpty) continue;
+      if (parts.length == 1) {
+        // direct file child
+        files.add(WorkspaceTreeNode(
+          name: parts.first,
+          fullPath: pathN,
+          kind: WorkspaceNodeKind.file,
+          fileStatus: entry.value,
+        ));
+      } else {
+        childDirs.add(parts.first);
+      }
+    }
+    final dirs = childDirs.map((name) {
+      final childPath = dirN + sep + name;
+      return WorkspaceTreeNode(
+        name: name,
+        fullPath: childPath,
+        kind: WorkspaceNodeKind.folder,
+        expanded: state.expandedDirs[childPath] ?? false,
+        children: const [], // lazily hydrate deeper on expand
+      );
+    }).toList();
+
+    dirs.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    files.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return [...dirs, ...files];
+  }
+
+  // Build full hierarchy recursively from file statuses
+  WorkspaceTreeNode _buildFullTree(
+      String dirPath, Map<String, IndexStatus> statuses) {
+    final sep = Platform.pathSeparator;
+    String normalize(String p) => p.replaceAll('\\', sep).replaceAll('/', sep);
+    final dirN = normalize(dirPath);
+    final prefix = dirN.endsWith(sep) ? dirN : dirN + sep;
+
+    final childDirNames = <String>{};
+    final files = <WorkspaceTreeNode>[];
+    for (final entry in statuses.entries) {
+      final pathN = normalize(entry.key);
+      if (!pathN.startsWith(prefix)) continue;
+      final rel = pathN.substring(prefix.length);
+      if (rel.isEmpty) continue;
+      final parts = rel.split(sep).where((s) => s.isNotEmpty).toList();
+      if (parts.isEmpty) continue;
+      if (parts.length == 1) {
+        files.add(WorkspaceTreeNode(
+          name: parts.first,
+          fullPath: pathN,
+          kind: WorkspaceNodeKind.file,
+          fileStatus: entry.value,
+        ));
+      } else {
+        childDirNames.add(parts.first);
+      }
+    }
+
+    final dirs = childDirNames.map((name) {
+      final childPath = dirN + sep + name;
+      return _buildFullTree(childPath, statuses);
+    }).toList();
+
+    dirs.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    files.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    // Compute aggregate for this directory
+    IndexStatus? agg;
+    bool hasError = false,
+        hasProcessing = false,
+        hasQueued = false,
+        hasProcessed = false;
+    for (final d in dirs) {
+      final st = d.aggregateStatus;
+      if (st == IndexStatus.error) hasError = true;
+      if (st == IndexStatus.processing) hasProcessing = true;
+      if (st == IndexStatus.queued) hasQueued = true;
+      if (st == IndexStatus.processed) hasProcessed = true;
+    }
+    for (final f in files) {
+      final st = f.fileStatus;
+      if (st == IndexStatus.error) hasError = true;
+      if (st == IndexStatus.processing) hasProcessing = true;
+      if (st == IndexStatus.queued) hasQueued = true;
+      if (st == IndexStatus.processed) hasProcessed = true;
+    }
+    if (hasError) {
+      agg = IndexStatus.error;
+    } else if (hasProcessing) {
+      agg = IndexStatus.processing;
+    } else if (hasQueued) {
+      agg = IndexStatus.queued;
+    } else if (hasProcessed) {
+      agg = IndexStatus.processed;
+    } else {
+      agg = null;
+    }
+
+    return WorkspaceTreeNode(
+      name: dirN.split(sep).last,
+      fullPath: dirN,
+      kind: WorkspaceNodeKind.folder,
+      expanded: state.expandedDirs[dirN] ?? false,
+      children: [...dirs, ...files],
+      aggregateHint: agg,
+    );
+  }
+
+  WorkspaceTreeNode _updateNodeByPath(WorkspaceTreeNode node, String path,
+      WorkspaceTreeNode Function(WorkspaceTreeNode) update) {
+    if (node.fullPath == path) {
+      return update(node);
+    }
+    if (node.kind != WorkspaceNodeKind.folder || node.children.isEmpty) {
+      return node;
+    }
+    final newChildren = <WorkspaceTreeNode>[];
+    bool changed = false;
+    for (final c in node.children) {
+      final next = _updateNodeByPath(c, path, update);
+      changed = changed || !identical(next, c);
+      newChildren.add(next);
+    }
+    if (!changed) return node;
+    return node.copyWith(children: newChildren);
+  }
 
   Future<void> pickAndIndexWorkspace() async {
     final dir = await fp.FilePicker.platform.getDirectoryPath();
@@ -34,6 +191,8 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
       filesIndexed: 0,
       totalFilesToIndex: 0,
       fileStatus: {},
+      tree: _buildRootShallow(rootDir),
+      expandedDirs: {rootDir: true},
     );
     final targets = <String, List<WorkspaceTarget>>{};
 
@@ -100,12 +259,18 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
       }
     }
 
+    // Build hierarchical tree from file statuses
+    // Hydrate root immediate children lazily based on statuses
+    // Build a full tree for initial snapshot (folders lazily hydrate on toggles later)
+    WorkspaceTreeNode rootNode =
+        _buildFullTree(rootDir, statuses).copyWith(expanded: true);
     state = state.copyWith(
       indexing: false,
       lastScan: DateTime.now(),
       filesIndexed: processed,
       targets: targets,
       fileStatus: Map<String, IndexStatus>.from(statuses),
+      tree: rootNode,
     );
   }
 
@@ -164,12 +329,17 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
       }
     }
 
+    // Rehydrate root (and any expanded dirs) lazily
+    WorkspaceTreeNode rootNode = _buildRootShallow(state.rootDir ?? '');
+    rootNode =
+        rootNode.copyWith(children: _hydrateChildren(state.rootDir ?? ''));
     state = state.copyWith(
       indexing: false,
       lastScan: DateTime.now(),
       filesIndexed: processed,
       targets: targets,
       fileStatus: Map<String, IndexStatus>.from(statuses),
+      tree: rootNode,
     );
   }
 
@@ -278,6 +448,31 @@ class WorkspaceIndexNotifier extends StateNotifier<WorkspaceIndexState> {
     _watchSub?.cancel();
     _debounce?.cancel();
     super.dispose();
+  }
+
+  // Lazily toggle and hydrate a directory in the tree
+  void _toggleAndHydrate(String dirPath, bool expand) {
+    WorkspaceTreeNode? current = state.tree;
+    if (current == null) return;
+    final updated = _updateNodeByPath(current, dirPath, (node) {
+      if (expand) {
+        final children =
+            node.children.isEmpty ? _hydrateChildren(dirPath) : node.children;
+        return node.copyWith(expanded: true, children: children);
+      } else {
+        return node.copyWith(expanded: false);
+      }
+    });
+    state = state.copyWith(tree: updated);
+  }
+
+  void toggleDirExpanded(String dirPath) {
+    final exp = Map<String, bool>.from(state.expandedDirs);
+    final next = !(exp[dirPath] ?? false);
+    exp[dirPath] = next;
+    // Update state and lazily hydrate just this directory
+    state = state.copyWith(expandedDirs: exp);
+    _toggleAndHydrate(dirPath, next);
   }
 }
 

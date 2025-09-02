@@ -52,6 +52,8 @@ class EditorView extends ConsumerStatefulWidget {
 class _EditorViewState extends ConsumerState<EditorView> {
   @override
   Widget build(BuildContext context) {
+  // ignore: avoid_print
+  print('[editor] build');
     final tabs = ref.watch(fileTabsProvider);
     final activeTab = ref.watch(activeTabProvider);
     final diagnosticsOn = ref.watch(diagnosticsProvider);
@@ -60,10 +62,12 @@ class _EditorViewState extends ConsumerState<EditorView> {
     final pendingScrollIndex = ref.watch(scrollToIndexProvider);
     if (pendingScrollIndex != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        final smooth = ref.read(smoothScrollingProvider);
         widget.itemScrollController.scrollTo(
           index: pendingScrollIndex,
-          duration: const Duration(milliseconds: 400),
+          duration: smooth ? const Duration(milliseconds: 400) : Duration.zero,
           curve: Curves.easeInOut,
+          alignment: 0.35,
         );
         ref.read(scrollToIndexProvider.notifier).state = null;
       });
@@ -100,6 +104,28 @@ class _EditorViewState extends ConsumerState<EditorView> {
                   return Consumer(builder: (context, ref, child) {
                     final treeState = ref.watch(tab.treeStateProvider);
                     final notifier = ref.read(tab.treeStateProvider.notifier);
+                    // Center pending node requests
+                    if (treeState.pendingCenterNodeId != null) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        final updated = ref.read(tab.treeStateProvider);
+                        final idx = updated.visibleNodes.indexWhere(
+                            (n) => n.id == updated.pendingCenterNodeId);
+                        if (idx != -1) {
+                          final smooth = ref.read(smoothScrollingProvider);
+                          widget.itemScrollController.scrollTo(
+                            index: idx,
+                            duration: smooth
+                                ? const Duration(milliseconds: 400)
+                                : Duration.zero,
+                            curve: Curves.easeInOut,
+                            alignment: 0.35,
+                          );
+                        }
+                        notifier.clearPendingCenter();
+                      });
+                    }
+                    // ignore: avoid_print
+                    print('[editor] tab build visible=${treeState.visibleNodes.length}');
                     return FocusableActionDetector(
                       autofocus: true,
                       shortcuts: <LogicalKeySet, Intent>{
@@ -133,31 +159,166 @@ class _EditorViewState extends ConsumerState<EditorView> {
                             switch (intent.dir) {
                               case _NavDir.up:
                                 notifier.selectUp();
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.5,
+                                  );
+                                });
                                 break;
                               case _NavDir.down:
                                 notifier.selectDown();
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.5,
+                                  );
+                                });
                                 break;
                               case _NavDir.left:
                                 notifier.collapseOrGoParent();
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.5,
+                                  );
+                                });
                                 break;
                               case _NavDir.right:
                                 notifier.expandOrGoChild();
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.5,
+                                  );
+                                });
                                 break;
                               case _NavDir.home:
                                 notifier.selectFirst();
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.5,
+                                  );
+                                });
                                 break;
                               case _NavDir.end:
                                 notifier.selectLast();
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.5,
+                                  );
+                                });
                                 break;
                               case _NavDir.pageUp:
                                 notifier.pageUp();
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.3,
+                                  );
+                                });
                                 break;
                               case _NavDir.pageDown:
                                 notifier.pageDown();
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.3,
+                                  );
+                                });
                                 break;
                               case _NavDir.enter:
                                 notifier.toggleExpandOrEdit((n) {
                                   // no-op in tests; editing handled in UI
+                                });
+                                ref
+                                    .read(keyboardNavTickProvider.notifier)
+                                    .state++;
+                                notifier.ensureSelectionVisible((idx) {
+                                  final smooth =
+                                      ref.read(smoothScrollingProvider);
+                                  widget.itemScrollController.scrollTo(
+                                    index: idx,
+                                    duration: smooth
+                                        ? const Duration(milliseconds: 200)
+                                        : Duration.zero,
+                                    curve: Curves.easeOut,
+                                    alignment: 0.5,
+                                  );
                                 });
                                 break;
                               case _NavDir.focusSearch:
@@ -179,9 +340,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                       child: ScrollablePositionedList.separated(
                         itemScrollController: widget.itemScrollController,
                         itemPositionsListener: widget.itemPositionsListener,
-                        itemCount: treeState.rootNodes.length,
+                        // Use visibleNodes so expanded children are shown, not just roots
+                        itemCount: treeState.visibleNodes.length,
                         itemBuilder: (context, index) {
-                          ElementNode node = treeState.rootNodes[index];
+                          final ElementNode node =
+                              treeState.visibleNodes[index];
                           return ElementNodeWidget(
                             node: node,
                             xsdParser: tab.xsdParser,

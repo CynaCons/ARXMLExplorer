@@ -120,15 +120,11 @@ lib/
         └── lib/src/          # Pure business logic
 ```
 
-### Legacy Shims (Deprecated)
-```
-lib/
-├── elementnode.dart            # Re-exports core/models/
-├── arxmlloader.dart           # Re-exports core/xml/
-├── arxml_validator.dart       # Re-exports core/validation/
-├── xsd_parser.dart           # Re-exports core/xsd/
-└── ref_normalizer.dart       # Re-exports core/refs/
-```
+### Legacy Shims
+All legacy top-level shim files under `lib/` have been removed. Use the modular paths:
+- core modules under `lib/core/...`
+- editor modules under `lib/features/editor/...`
+- workspace modules under `lib/features/workspace/...`
 
 ### Configuration Files
 ```

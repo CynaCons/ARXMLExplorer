@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/xsd_parser.dart';
+import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 import 'package:arxml_explorer/core/models/element_node.dart';
 import 'dart:collection';
 import 'package:arxml_explorer/features/editor/state/commands/arxml_edit_command.dart';
@@ -16,6 +16,7 @@ class ArxmlTreeState {
   final Map<int, ElementNode> flatMap;
   final int? contextMenuNodeId;
   final int? selectedNodeId; // NEW: keyboard selection
+  final int? pendingCenterNodeId; // NEW: request to center this node in view
 
   ArxmlTreeState({
     required this.rootNodes,
@@ -23,6 +24,7 @@ class ArxmlTreeState {
     required this.flatMap,
     this.contextMenuNodeId,
     this.selectedNodeId,
+    this.pendingCenterNodeId,
   });
 
   ArxmlTreeState copyWith({
@@ -30,6 +32,8 @@ class ArxmlTreeState {
     bool clearContextMenu = false,
     int? selectedNodeId,
     bool clearSelection = false,
+    int? pendingCenterNodeId,
+    bool clearPendingCenter = false,
   }) {
     return ArxmlTreeState(
       rootNodes: rootNodes,
@@ -39,6 +43,9 @@ class ArxmlTreeState {
           clearContextMenu ? null : contextMenuNodeId ?? this.contextMenuNodeId,
       selectedNodeId:
           clearSelection ? null : (selectedNodeId ?? this.selectedNodeId),
+      pendingCenterNodeId: clearPendingCenter
+          ? null
+          : (pendingCenterNodeId ?? this.pendingCenterNodeId),
     );
   }
 }
@@ -46,6 +53,8 @@ class ArxmlTreeState {
 final arxmlTreeStateProvider = StateNotifierProvider.autoDispose
     .family<ArxmlTreeStateNotifier, ArxmlTreeState, List<ElementNode>>(
         (ref, initialNodes) {
+  // Keep alive to support programmatic tests manipulating the tree without UI listeners
+  ref.keepAlive();
   return ArxmlTreeStateNotifier(initialNodes);
 });
 
@@ -54,6 +63,8 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
   ArxmlTreeStateNotifier(this.initialNodes) : super(_initState(initialNodes));
 
   static ArxmlTreeState _initState(List<ElementNode> rootNodes) {
+    // ignore: avoid_print
+    print('[tree] initState start rootCount=' + rootNodes.length.toString());
     final flatMap = <int, ElementNode>{};
     int idCounter = 0;
     void buildFlatMap(ElementNode node, ElementNode? parent) {
@@ -70,11 +81,14 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     }
 
     final visibleNodes = _getVisibleNodes(rootNodes);
+    // ignore: avoid_print
+    print('[tree] initState visible=' + visibleNodes.length.toString());
     return ArxmlTreeState(
         rootNodes: rootNodes,
         visibleNodes: UnmodifiableListView(visibleNodes),
         flatMap: flatMap,
-        selectedNodeId: visibleNodes.isNotEmpty ? visibleNodes.first.id : null);
+        selectedNodeId: visibleNodes.isNotEmpty ? visibleNodes.first.id : null,
+        pendingCenterNodeId: null);
   }
 
   static List<ElementNode> _getVisibleNodes(List<ElementNode> rootNodes) {
@@ -111,6 +125,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       visibleNodes: newVisible,
       contextMenuNodeId: state.contextMenuNodeId,
       selectedNodeId: sel,
+      pendingCenterNodeId: state.pendingCenterNodeId,
     );
   }
 
@@ -193,7 +208,11 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     _rebuildFlatMap();
     // After rebuild, select the newly added node
     if (newNode.id != -1) {
-      state = state.copyWith(selectedNodeId: newNode.id);
+      // select and request centering in UI
+      state = state.copyWith(
+        selectedNodeId: newNode.id,
+        pendingCenterNodeId: newNode.id,
+      );
     }
   }
 
@@ -328,6 +347,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       visibleNodes: visible,
       contextMenuNodeId: state.contextMenuNodeId,
       selectedNodeId: sel,
+      pendingCenterNodeId: state.pendingCenterNodeId,
     );
   }
 
@@ -343,6 +363,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       flatMap: state.flatMap,
       visibleNodes: UnmodifiableListView(_getVisibleNodes(state.rootNodes)),
       contextMenuNodeId: state.contextMenuNodeId,
+      pendingCenterNodeId: state.pendingCenterNodeId,
     );
   }
 
@@ -357,6 +378,58 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       flatMap: state.flatMap,
       visibleNodes: UnmodifiableListView(_getVisibleNodes(state.rootNodes)),
       contextMenuNodeId: state.contextMenuNodeId,
+      pendingCenterNodeId: state.pendingCenterNodeId,
+    );
+  }
+
+  // Convenience: collapse all nodes so only roots are visible
+  void collapseAll() {
+    // ignore: avoid_print
+    print('[tree] collapseAll');
+    void walk(ElementNode n) {
+      if (n.children.isNotEmpty) {
+        // Collapse this node and all descendants
+        n.isCollapsed = true;
+        for (final c in n.children) {
+          walk(c);
+        }
+      }
+    }
+
+    for (final r in state.rootNodes) {
+      walk(r);
+    }
+    state = ArxmlTreeState(
+      rootNodes: state.rootNodes,
+      flatMap: state.flatMap,
+      visibleNodes: UnmodifiableListView(_getVisibleNodes(state.rootNodes)),
+      contextMenuNodeId: state.contextMenuNodeId,
+      pendingCenterNodeId: state.pendingCenterNodeId,
+    );
+  }
+
+  // Convenience: expand all nodes so all are visible
+  void expandAll() {
+    // ignore: avoid_print
+    print('[tree] expandAll');
+    void walk(ElementNode n) {
+      if (n.children.isNotEmpty) {
+        n.isCollapsed = false;
+        for (final c in n.children) {
+          walk(c);
+        }
+      }
+    }
+
+    for (final r in state.rootNodes) {
+      walk(r);
+    }
+    state = ArxmlTreeState(
+      rootNodes: state.rootNodes,
+      flatMap: state.flatMap,
+      visibleNodes: UnmodifiableListView(_getVisibleNodes(state.rootNodes)),
+      contextMenuNodeId: state.contextMenuNodeId,
+      pendingCenterNodeId: state.pendingCenterNodeId,
     );
   }
 
@@ -478,6 +551,24 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     if (idx == -1) return;
     onNeedScroll(idx);
   }
+
+  // NEW: Ensure a particular node is centered in the viewport on next frame
+  void ensureNodeCentered(int nodeId) {
+    final node = state.flatMap[nodeId];
+    if (node == null) return;
+    // Expand ancestors so it's visible, then request centering
+    expandUntilNode(nodeId);
+    state = state.copyWith(
+      selectedNodeId: nodeId,
+      pendingCenterNodeId: nodeId,
+    );
+  }
+
+  // Clear pending center request (UI should call after scrolling)
+  void clearPendingCenter() {
+    if (state.pendingCenterNodeId == null) return;
+    state = state.copyWith(clearPendingCenter: true);
+  }
 }
 
 class FileTabState {
@@ -486,6 +577,8 @@ class FileTabState {
       treeStateProvider;
   final XsdParser? xsdParser;
   final String? xsdPath;
+  final String?
+      xsdSource; // catalog:basename|catalog:version|catalog:nearest|bundled|workspace|direct|manual|fallback
   final bool isDirty;
   final String? lastSavedSnapshot; // serialized XML snapshot
   FileTabState({
@@ -493,6 +586,7 @@ class FileTabState {
     required this.treeStateProvider,
     this.xsdParser,
     this.xsdPath,
+    this.xsdSource,
     this.isDirty = false,
     this.lastSavedSnapshot,
   });
@@ -502,6 +596,7 @@ class FileTabState {
         treeStateProvider,
     XsdParser? xsdParser,
     String? xsdPath,
+    String? xsdSource,
     bool? isDirty,
     String? lastSavedSnapshot,
   }) {
@@ -510,6 +605,7 @@ class FileTabState {
       treeStateProvider: treeStateProvider ?? this.treeStateProvider,
       xsdParser: xsdParser ?? this.xsdParser,
       xsdPath: xsdPath ?? this.xsdPath,
+      xsdSource: xsdSource ?? this.xsdSource,
       isDirty: isDirty ?? this.isDirty,
       lastSavedSnapshot: lastSavedSnapshot ?? this.lastSavedSnapshot,
     );

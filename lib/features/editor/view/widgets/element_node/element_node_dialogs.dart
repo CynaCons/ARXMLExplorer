@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/core/models/element_node.dart';
-import '../../../editor.dart'; // For ARXMLTreeViewState
+import 'package:arxml_explorer/features/editor/editor.dart';
+import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
-import 'package:arxml_explorer/xsd_parser.dart';
 
 class ElementNodeDialogs {
   static final Map<String, String> _lastPickedByParent = {};

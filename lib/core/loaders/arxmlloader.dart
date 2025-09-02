@@ -32,8 +32,15 @@ class ARXMLFileLoader {
     return retval;
   }
 
-  List<ElementNode> parseXmlContent(String input) =>
-      const ArxmlParser().parseXmlContent(input);
+  List<ElementNode> parseXmlContent(String input) {
+    // ignore: avoid_print
+    print('[loader] parseXmlContent len=' + input.length.toString());
+    final nodes = const ArxmlParser().parseXmlContent(input);
+    // ignore: avoid_print
+    print('[loader] parsed root=' + nodes.length.toString());
+    return nodes;
+  }
+
   String toXmlString(List<ElementNode> nodes) =>
       const ArxmlSerializer().toXmlString(nodes);
 }

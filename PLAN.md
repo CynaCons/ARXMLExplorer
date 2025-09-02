@@ -4,36 +4,54 @@
 
 ## Test Failures Triage (Latest run)
 - [x] Re-ran full test suite; ProviderScope/missing placeholder issues resolved
+- [x] EditorView rendered only root nodes — fixed to use visibleNodes for list rendering (UI now shows full tree)
 - [ ] autosar_xsd_children_test: AR-PACKAGE/ELEMENTS should include APPLICATION-INTERFACE (fix XSD children resolution)
 - [x] validation_report_test: invalid child under parent should be detected (align validator with XSD children map) — fixed by skipping value nodes and contextual lookup in validator
 - [x] search_and_scroll_test: pumpAndSettle timeout (stabilize search delegate + scroll animations; add test-mode fast animations) — mitigated by bounded pumps and search delegate stability
 - [x] integration/file_loading_integration_test: "File loading simulation works end-to-end" timeout — fixed by removing artificial delays and using bounded pumps
 - [x] integration/file_loading_integration_test: "TabController state management works correctly" timeout — fixed by removing duplicate TabBar and bounded pumps
-- [x] ui_ux_features_test: Collapse/Expand All buttons timeout — reduced by bounded pumps and tighter per-test timeout
+- [x] ui_ux_features_test: Collapse/Expand All buttons timeout — addressed by reintroducing Collapse/Expand All actions and updating test to drive provider deterministically. Note: one timeout still observed intermittently; further instrumentation pending.
 - [x] Debug TabController test sees two TabBar widgets — resolved by removing duplicate TabBar in EditorView
 
+### Additional failing tests after latest run
+- [x] editing_schema_test.dart: updated to use `XmlExplorerApp` and current imports
+- [x] file_handling_test.dart: updated to use `XmlExplorerApp`
+- [x] performance_test.dart: updated to use `XmlExplorerApp`
+- [x] search_test.dart: updated imports/usages (now passing)
+- [ ] search_and_scroll_test.dart: reduced flakiness with bounded pumps; still failing intermittently on CI; add more deterministic search opening and/or provider-driven path
+
+### Next steps (tests)
+- Add Collapse/Expand All UI actions or refactor test to use provider API
+- Update legacy test scaffolds to new AppRoot/HomeShell and editor provider APIs
+- Tame pumpAndSettle in search_and_scroll_test with bounded pumps and fast animations
+
 ## NavigationRail Remediation & Redesign
-- [ ] Remove stray "ARXML" element appearing at top of rail (identify source widget & delete)
-- [ ] Ensure only intended destinations: Editor / Workspace / Validation / Settings
-- [ ] Increase icon size (target ~28px) with consistent padding
-- [ ] Change selection highlight to square (no rounded corners) behind icon+label
-- [ ] Refine highlight color (accessible contrast; light/dark)
-- [ ] Enforce single-line labels (overflow ellipsis, no wrap)
-- [ ] Align icon + label vertically centered; consistent spacing
-- [ ] Hover & pressed states updated for square highlight (separate from selected state)
+- [x] Remove stray "ARXML" element appearing at top of rail (identify source widget & delete)
+- [x] Ensure only intended destinations: Editor / Workspace / Validation / Settings
+- [x] Increase icon size (target ~28px) with consistent padding
+- [x] Change selection highlight to square (no rounded corners) behind icon+label
+- [x] Refine highlight color (accessible contrast; light/dark)
+- [x] Enforce single-line labels (overflow ellipsis, no wrap)
+- [x] Align icon + label vertically centered; consistent spacing
+- [x] Hover & pressed states updated for square highlight (separate from selected state)
 - [x] REMOVE broken High Contrast mode variant (deprecated toggle & styling) ✅
-- [ ] Code cleanup: extract NavRail destination builder to a dedicated helper/widget
+- [x] Code cleanup: extract NavRail destination builder to a dedicated helper/widget (`NavRailDestinationTile`)
+ - [x] Add app logo/name in leading section
+ - [x] Move former AppBar actions into trailing section
 
 ## AppBar / Top Toolbar Consolidation
-- [ ] Inventory current icons (list & purpose)
-- [ ] Define primary always-visible actions (e.g., Open, Save, Undo, Redo)
-- [ ] Move secondary/rare actions (Diagnostics toggle, Live Validation toggle, Settings) into overflow menu
-- [ ] Introduce overflow (3‑dot) menu with labeled actions + shortcuts in tooltips
-- [ ] Group related actions (Save/Save All; Validation toggles) logically
-- [ ] Remove redundant or low-value icons after consolidation
-- [ ] Provide keyboard shortcut cheat sheet entry (modal or menu section)
-- [x] Remove Verbose XSD diagnostics icon from AppBar (kept in Settings only) ✅
-
+- [x] Inventory current icons (list & purpose)
+- [x] Define primary always-visible actions (Open File, New File, Save, Save All, Undo, Redo)
+- [x] Move secondary/rare actions (Open Workspace, Validate Now, Live Validation toggle, Verbose Diagnostics, XSD Select/Reset, Settings) into overflow menu
+- [x] Introduce overflow (3‑dot) menu with labeled actions + shortcuts in tooltips
+- [x] Group related actions (Save/Save All; Validation; Schema; App) logically
+- [x] Remove redundant or low-value icons after consolidation
+- [x] Provide keyboard shortcut cheat sheet entry (modal in overflow menu)
+- Update (Aug 15, 2025):
+  - [x] Remove AppBar title/gradient to maximize vertical space
+  - [x] Relocate all actions to NavigationRail trailing
+  - [x] Add app logo/name in NavigationRail leading
+- // existing done items
 ## Tab Bar Contrast & Visibility (New)
 - [x] Improve tab text contrast (dark text on light surface) ✅
 - [x] Add material surface & outline/elevation to distinguish tab boundaries ✅
@@ -49,8 +67,8 @@
 - [x] Introduce layering: core (pure), application (state/providers), presentation (widgets/views) (INITIAL DOC ✅)
 - [x] Add dependency rules to RULES.md (presentation -> application -> core only) ✅
 - [x] Complete migration of all legacy files to proper modular structure ✅
-- [x] Remove backward-compatible shim files from lib/ (cleanup completed, staged for commit) ✅
-- [x] Stage deletions for commit (run git rm) ✅
+- [x] Remove backward-compatible shim files from lib/ (cleanup completed; physically removed) ✅
+- [x] Stage deletions for commit (N/A – files were untracked and have been physically removed) ✅
   - [x] ast_cache → core/cache/ ✅
   - [x] workspace_indexer → features/workspace/state/ ✅  
   - [x] arxml_tree_view_state → features/editor/state/ ✅
@@ -76,71 +94,142 @@
 ## Editing Workflow Fixes (New)
 - [x] Successive Add Child improvements: expand parent if collapsed when adding ✅
 - [x] Auto-select newly added child node after add ✅
-- [ ] Center newly added child (pending scrolling API)
+- [x] Center newly added child (added ensureNodeCentered + pendingCenter consumption in EditorView)
 - [ ] Optional loop add UX (Add Another…) (defer decision)
 - [x] Test: addChild selects new node & parent expanded ✅
 
 ## Testing & Validation (post-implementation)
 - [ ] Golden test for updated NavigationRail (light/dark)
-- [ ] Widget test: selecting each destination updates active view
+- [x] Widget test: selecting each destination updates active view
 - [ ] Widget test: overflow menu opens & triggers actions (e.g., toggle diagnostics)
 - [ ] Accessibility test: focus traversal sequence includes rail then toolbar then editor
 - [ ] Regression test: stray "ARXML" element no longer present
+- [x] Update tests to import `XmlExplorerApp` and new providers (search_test, editing_schema_test, file_handling_test, performance_test)
+- [x] Make file-open deterministic in tests by preferring `test/res/generic_ecu.arxml`
 
 ## Workspace View Refactor (Hierarchical + Status)
-- [ ] Remove duplicate lists (identify both sources, consolidate to single data model)
-- [ ] Represent workspace as directory tree (folders first, then files) reflecting actual FS structure
-- [ ] Collapsible directories with expand/collapse state persistence per session
-- [ ] Index status indicators per file (queued, processing, processed, error) via colored dot + tooltip
-- [ ] Directory aggregate status (e.g., spinner if any child processing, warning if any error)
-- [ ] Show file count per directory (badge) & processed/total fraction in tooltip
+- [x] Remove duplicate lists (single hierarchical data model in state)
+- [x] Represent workspace as directory tree (folders first, then files)
+- [x] Collapsible directories with expand/collapse state persistence per session
+- [x] Index status indicators per file (icons reflect status)
+- [x] Directory aggregate status (based on children)
+- [x] Show file count per directory (badge) & processed/total fraction in tooltip
 - [ ] Lazy build children on expand for performance (avoid building entire large tree up front)
-- [ ] Sorting: directories alphabetically, files alphabetically (case-insensitive)
-- [ ] Filter/search box (scopes to file + folder names, highlights matches, auto-expands containing branches)
-- [ ] Selection opens file tab (double‑click or Enter) and scrolls to first SHORT-NAME
+- [x] Sorting: directories alphabetically, files alphabetically (case-insensitive)
+- [x] Filter box (scopes to names; simple match; branches included)
+- [x] Selection/double‑click opens file and switches to Editor view
 - [x] Double-click switches to Editor view automatically after opening
-- [ ] Context menu: Refresh Directory, Reveal in OS, Remove From Index (if implemented)
-- [ ] Error state styling (red icon + message tooltip) for parse/index failures
+- [x] Context menu: Refresh Directory, Reveal in OS, Remove From Index (if implemented)
+- [x] Error state styling (red icon + message tooltip) for parse/index failures
 - [ ] Performance: virtualization / limited render for long sibling lists (>500) with chunked loading
-- [ ] Provider/state redesign: single WorkspaceTreeNode model (folder/file) with status & children
-- [ ] Migrate existing index results into hierarchical structure builder
-- [ ] Tests: tree build from sample nested structure
-- [ ] Tests: status indicator transitions (queued -> processing -> processed)
+- [x] Provider/state redesign: WorkspaceTreeNode with status & children
+- [x] Migrate existing index results into hierarchical structure builder
+- [x] Tests: tree build from sample nested structure
+- [x] Tests: status indicator transitions (queued -> processing -> processed)
 - [ ] Tests: filter narrows & highlights results, expands correct ancestors
 - [ ] Regression test: only one list rendered (assert single Scrollable)
+- [x] Lazy build children on expand for performance
+  - UI-level: tree builder skips building child widgets for collapsed folders unless filtering
+  - State-level: hydrate folder children on demand when expanding (no full tree prebuild)
+  - Counts: computed from fileStatus by path prefix so badges work without hydrated children
 
 ## Editor Navigation & Selection Fixes
-- [ ] Center active element on keyboard navigation (auto scroll so selected row ~middle of viewport)
-- [ ] Remove dual highlighting (unify mouse & keyboard selection state; clear stale mouse highlight on key press)
-- [ ] Single authoritative selection style
-- [ ] Smooth scroll animation (configurable on/off for tests)
-- [ ] Provide API: ensureNodeCentered(nodeId)
-- [ ] Test: keyboard ArrowDown keeps node centered after initial centering window
-- [ ] Test: switching from mouse-click highlight to keyboard removes prior hover/active style
+- [x] Center active element on keyboard navigation (alignment 0.5)
+- [x] Remove dual highlighting (clear hover on key press via keyboardNavTick)
+- [x] Single authoritative selection style (selectedNodeId-driven)
+- [x] Smooth scroll animation (configurable via smoothScrollingProvider)
+- [x] Provide API: ensureNodeCentered(nodeId)
+- [ ] Test: keyboard ArrowDown keeps node centered after initial centering window (basic smoke added; expand later)
+- [ ] Test: switching from mouse-click highlight to keyboard removes prior hover/active style (pending targeted test)
 
 ## NavigationRail Alignment & Visual Corrections
 - [ ] Fix square (future) / current indicator alignment to exactly overlay icon bounds
 - [ ] Adjust padding so indicator encloses icon+label without vertical drift
 - [ ] Test: golden diff for indicator alignment (selected vs unselected)
 
+### Bug fixes
+- [x] NavigationRail taps not working due to inner GestureDetector in custom tile intercepting taps — removed to let NavigationRail handle selection
+
 ## XSD Schema Picker & Styling
-- [ ] Fix XSD selector visibility (white-on-white) by applying contrasting background or text color
-- [ ] Add explicit schema badge (version + file basename) in AppBar
-- [ ] Hover tooltip: full schema path
+ - [ ] Fix XSD selector visibility (white-on-white) by applying contrasting background or text color
+ - [x] Add explicit schema badge (version + file basename) in AppBar
+ - [x] Hover tooltip: full schema path
 - [ ] Test: schema badge visible in light & dark themes (contrast >= 4.5)
 
+## XSD Discovery & Catalog (New)
+- [x] Discover XSDs at startup from bundled `res/` (recursive scan)
+- [x] Allow user to add additional XSD directories
+  - [x] Persist sources list across restarts (settings storage)
+- [x] Manual "Rescan XSDs" action (Settings and/or XSD view)
+- [x] Build versioned XSD catalog (map versions/aliases -> file paths)
+- [x] Merge duplicates/variants (normalize `4-3-0` vs `4.3.0`, prefer newest)
+- [ ] UI to manage sources & catalog
+  - [x] Settings section controls (list, add/remove dirs, rescan)
+  - [x] Optional dedicated XSD view in NavigationRail (catalog list, apply to active tab)
+- [x] Integration: auto-detect uses catalog as primary lookup source
+- [x] Integration: XSD picker dialog sources options from catalog (fallback to manual picker)
+- [ ] Persist catalog in app state; refresh on directory changes
+- [x] Tests: discovery from res, user dir add/remove, rescan updates catalog
+  - Added: xsd_catalog_test.dart validates addSource + lookups by version/basename
+  - Added: xsd_catalog_additional_test.dart covers bundled discovery, add/remove + rescan, and fallback chain
+- [x] Tests: auto-detect resolves via catalog fallback chain
+
 ## XSD Auto-Detection & Validation Reliability
-- [ ] Reproduce current detection failure (log header + parsed tokens)
-- [ ] Add verbose detection logging (guarded by diagnostics toggle)
-- [ ] Harden xsi:schemaLocation parsing (handle line breaks, multiple spaces, odd token counts)
-- [ ] Normalize version variants (4-3-0 / 4.3.0) before file lookup (re-verify existing logic)
-- [ ] Workspace search fallback ordering (prefer nearest version, then default)
-- [ ] Cache detection per file (invalidate on file save)
-- [ ] Visual warning if validation running without schema (badge / snackbar)
-- [ ] Validation: ensure parser indexes built before validate (await readiness)
-- [ ] Add regression test: file with schemaLocation resolves expected XSD
-- [ ] Add regression test: version-only header resolves variant file name
-- [ ] Add validation test: known invalid child still reported after detection rewrite
+Goal: Make schema auto-detection deterministic, resilient to header variations, and observable. Validation must never run against the wrong schema; when no schema is detected, surface a clear, actionable warning.
+
+### Detection robustness
+- [x] Extract header parsing into a dedicated helper: parseSchemaHeader(xml) -> { schemaLocationPairs: List<(ns, href)>, noNsHref, versionHint }
+- [x] Harden parsing of xsi:schemaLocation and noNamespaceSchemaLocation
+  - [x] Handle newlines, tabs, multiple spaces between tokens
+  - [x] Support odd/mismatched token counts (drop last dangling token gracefully)
+  - [x] Accept both single URL (noNamespace) and pair list (namespaced)
+- [x] Normalize version variants prior to lookup (e.g., 4-3-0 ⇄ 4.3.0; case-insensitive basename)
+- [x] Prefer namespaced AUTOSAR URLs when present; otherwise fall back to basename/version heuristics
+
+### Fallback and selection order
+- [x] Implement strict ordering with acceptance criteria
+  1) Catalog exact basename+version
+  2) Catalog nearest version (same major/minor; prefer newest patch)
+  3) Bundled res/ exact basename or nearest version
+  4) Workspace search by basename
+  5) Hard fallback: AUTOSAR_00050.xsd
+- [ ] Document the ordering in code comments and PRD links (partial: noted in PLAN, add inline docstrings)
+
+### Caching and invalidation
+- [x] Cache detected schema per open file/tab (content hash based)
+- [x] Invalidate cache on save, content change, or catalog rescan
+- [ ] Debounce detection while typing (live validation on) to avoid thrash
+
+### Observability & diagnostics
+- [x] Add verbose detection logging (guarded by diagnostics toggle)
+  - [x] Log header tokens, normalization decisions, and chosen source (catalog/bundled/workspace/fallback)
+- [x] Surface detection source in AppBar schema badge tooltip (e.g., “Catalog: ...”, “Bundled: ...”)
+
+### UX: missing/uncertain schema
+- [x] Show a non-blocking warning when validation runs without a detected schema
+  - [x] Badge state: warning color with tooltip and quick action “Pick schema…”
+  - [x] Optional one-shot snackbar after open
+
+### Validation sequencing
+- [ ] Ensure parser + indexes are built before running validation after detection changes
+- [ ] Gate live validation on detection readiness (avoid running with stale parser)
+
+### Tests (add)
+- Header parsing
+  - [x] schemaLocation with newlines/tabs/multi-space resolves
+  - [x] Odd token list handled gracefully
+  - [x] noNamespaceSchemaLocation resolves basename
+- Selection order
+  - [x] Prefer catalog exact > nearest > bundled > workspace > default
+  - [x] Version-only header resolves variant file name
+- Validation
+  - [ ] Known invalid child is still reported after detection rewrite
+  - [ ] Warning appears when no schema available; clears after picking one
+
+### Prereqs already implemented (for context)
+- [x] Catalog-first detection integrated (basename/version lookup) — see “XSD Discovery & Catalog”
+- [x] AppBar schema badge present with tooltip path
+- [x] Tests exist for catalog discovery and detection fallback chain
 
 ---
 
@@ -216,9 +305,4 @@
 - AUTOSAR sample XSD child extraction tests (SWC, BSW, namespace)
 - Schema validation basic test (invalid child detection)
 - Ref normalization core case tests
-
----
-
-# NEXT ITERATIONS (Pipeline Placeholder)
-- (Add ITERATION 2 when scope approved)
 

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/core/models/element_node.dart';
-import '../../../editor.dart'; // For ARXMLTreeViewState
+import 'package:arxml_explorer/features/editor/editor.dart'; // For ARXMLTreeViewState
+import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart'
     show validationSchedulerProvider, fileTabsProvider;
 import 'package:arxml_explorer/app_providers.dart';
 import 'element_node_dialogs.dart';
-import 'package:arxml_explorer/xsd_parser.dart';
 
 mixin ElementNodeActions<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   AutoDisposeStateNotifierProvider<ArxmlTreeStateNotifier, ArxmlTreeState>

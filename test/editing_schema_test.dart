@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/main.dart' show XmlExplorerApp;
-import 'package:arxml_explorer/arxmlloader.dart';
-import 'package:arxml_explorer/elementnodecontroller.dart';
+import 'package:arxml_explorer/core/core.dart';
+import 'package:arxml_explorer/features/editor/state/testing/element_node_controller.dart';
+import 'package:arxml_explorer/main.dart';
 
 void main() {
   group('Editing and Schema', () {

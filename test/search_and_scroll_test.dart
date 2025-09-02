@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/arxmlloader.dart';
+import 'package:arxml_explorer/core/core.dart';
 
-import 'package:arxml_explorer/elementnodecontroller.dart';
+import 'package:arxml_explorer/features/editor/state/testing/element_node_controller.dart';
 import 'package:arxml_explorer/main.dart' show XmlExplorerApp;
 
 void main() {
@@ -76,15 +76,36 @@ void main() {
 
       // Open a file
       await tester.tap(find.byIcon(Icons.file_open));
-      await tester.pumpAndSettle();
+      // bounded pumps to avoid long settle timeouts in CI
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Simulate search and tap
       await tester.tap(find.byIcon(Icons.search));
-      await tester.pumpAndSettle();
+      // Wait for search overlay to appear
+      bool appeared = false;
+      for (int i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.byType(TextField).evaluate().isNotEmpty) {
+          appeared = true;
+          break;
+        }
+      }
+      expect(appeared, isTrue, reason: 'Search field did not appear');
       await tester.enterText(find.byType(TextField), 'OsCounterValue');
-      await tester.pumpAndSettle();
+      // Wait for suggestions to render
+      bool suggestionVisible = false;
+      for (int i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.text('OsCounterValue').evaluate().isNotEmpty) {
+          suggestionVisible = true;
+          break;
+        }
+      }
+      expect(suggestionVisible, isTrue,
+          reason: 'Search suggestion did not appear');
       await tester.tap(find.text('OsCounterValue').last);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       // Verify the node is now visible and scrolled to
       expect(find.textContaining('OsCounterValue'), findsOneWidget);

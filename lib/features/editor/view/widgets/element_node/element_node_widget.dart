@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/core/models/element_node.dart';
 import '../../../editor.dart'; // For ARXMLTreeViewState
-import 'package:arxml_explorer/xsd_parser.dart';
+import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 import 'package:arxml_explorer/features/editor/view/widgets/tree/depth_indicator.dart';
 import 'element_node_actions.dart';
 import 'ref_indicator.dart';
 import 'validation_badge.dart';
+import 'package:arxml_explorer/app_providers.dart';
 
 class ElementNodeWidget extends ConsumerStatefulWidget {
   final ElementNode node;
@@ -96,8 +97,15 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget>
 
   @override
   Widget build(BuildContext context) {
+    // Clear hover on any keyboard navigation tick to avoid dual highlight
+    ref.listen<int>(keyboardNavTickProvider, (prev, next) {
+      if (mounted && _isHovered) {
+        setState(() => _isHovered = false);
+      }
+    });
     final treeState = ref.watch(treeStateProvider);
-    final isHighlighted = treeState.contextMenuNodeId == node.id;
+    final isSelected = treeState.selectedNodeId == node.id;
+    final isContextMenuTarget = treeState.contextMenuNodeId == node.id;
     final colorScheme = Theme.of(context).colorScheme;
     final hasShortNameChild = node.children.isNotEmpty &&
         node.children.first.elementText == 'SHORT-NAME' &&
@@ -109,8 +117,11 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget>
         short == null ? node.elementText : '${node.elementText}  •  $short';
     final highlightColor = colorScheme.primaryContainer;
     final hoverColor = colorScheme.secondaryContainer.withOpacity(0.18);
-    final bgColor =
-        isHighlighted ? highlightColor : (_isHovered ? hoverColor : null);
+    final bgColor = isSelected
+        ? highlightColor
+        : (_isHovered
+            ? hoverColor
+            : (isContextMenuTarget ? highlightColor.withOpacity(0.6) : null));
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -123,6 +134,8 @@ class _ElementNodeWidgetState extends ConsumerState<ElementNodeWidget>
           onSecondaryTapDown: (d) =>
               _showContextMenu(context, d.globalPosition),
           onLongPressStart: (d) => _showContextMenu(context, d.globalPosition),
+          onTap: () =>
+              ref.read(treeStateProvider.notifier).setSelected(node.id),
           child: ListTile(
             leading: Row(mainAxisSize: MainAxisSize.min, children: [
               DepthIndicator(depth: node.depth, isLastChild: false),

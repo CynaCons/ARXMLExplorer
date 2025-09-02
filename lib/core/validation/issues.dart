@@ -1,5 +1,5 @@
 import '../models/element_node.dart';
-import '../../../xsd_parser.dart';
+import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 
 enum ValidationSeverity { error, warning, info }
 

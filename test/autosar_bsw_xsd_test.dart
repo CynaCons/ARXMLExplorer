@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/xsd_parser.dart';
+import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 
 void main() {
   group('AUTOSAR XSD - BSW Configuration (ECUC)', () {

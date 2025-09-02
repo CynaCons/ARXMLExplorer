@@ -49,6 +49,7 @@ dependencies:
   path: ^1.8.3
   arxml_core:
     path: packages/arxml_core
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:

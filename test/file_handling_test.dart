@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:arxml_explorer/main.dart' show XmlExplorerApp;
-import 'package:arxml_explorer/arxmlloader.dart';
+import 'package:arxml_explorer/core/core.dart';
+import 'package:arxml_explorer/main.dart';
 
 void main() {
   group('File Handling', () {

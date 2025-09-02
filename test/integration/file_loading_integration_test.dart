@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:arxml_explorer/core/core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
 import 'package:arxml_explorer/main.dart' as app show XmlExplorerApp;
 import 'package:arxml_explorer/core/models/element_node.dart';
-import 'package:arxml_explorer/arxmlloader.dart';
 import 'package:arxml_explorer/features/editor/editor.dart';
 import 'package:arxml_explorer/features/editor/view/widgets/element_node/element_node_widget.dart';
 

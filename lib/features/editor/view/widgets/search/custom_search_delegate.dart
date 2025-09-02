@@ -3,11 +3,16 @@ import '../../../../../core/models/element_node.dart';
 import '../../../editor.dart'; // For ARXMLTreeViewState
 
 class CustomSearchDelegate extends SearchDelegate<int?> {
-  final ArxmlTreeState treeState;
+  final ArxmlTreeState? treeState;
+  final ArxmlTreeState? Function()? getTreeState;
   final bool isCaseSensitive;
   final bool isWholeWord;
-  CustomSearchDelegate(this.treeState,
-      {this.isCaseSensitive = false, this.isWholeWord = false});
+  CustomSearchDelegate(
+    this.treeState, {
+    this.getTreeState,
+    this.isCaseSensitive = false,
+    this.isWholeWord = false,
+  });
 
   bool _matchesQuery(String? text, String query) {
     if (text == null || text.isEmpty) return false;
@@ -20,10 +25,14 @@ class CustomSearchDelegate extends SearchDelegate<int?> {
     return searchText.contains(searchQuery);
   }
 
+  ArxmlTreeState? _effectiveState() => getTreeState?.call() ?? treeState;
+
   List<ElementNode> performSearch(String query) {
     if (query.isEmpty) return [];
+    final ts = _effectiveState();
+    if (ts == null) return [];
     final results = <ElementNode>{};
-    for (final node in treeState.flatMap.values) {
+    for (final node in ts.flatMap.values) {
       if (_matchesQuery(node.elementText, query)) {
         results.add(node);
       }
