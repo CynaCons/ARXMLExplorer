@@ -15,6 +15,7 @@ import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart'
 import 'package:arxml_explorer/features/workspace/view/workspace_view.dart';
 import 'package:arxml_explorer/features/validation/view/validation_view.dart';
 import 'package:arxml_explorer/features/editor/view/widgets/search/custom_search_delegate.dart';
+import 'package:arxml_explorer/features/xsd/view/xsd_catalog_view.dart';
 
 // Global navigation index used across views
 final navRailIndexProvider = StateProvider<int>((ref) => 0);
@@ -49,7 +50,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
       _tabController?.dispose();
       if (tabsLen > 0) {
         final safe = activeIndex.clamp(0, tabsLen - 1);
-        _tabController =
+        _tabController = 
             TabController(length: tabsLen, vsync: this, initialIndex: safe);
         // Ensure listeners dependent on TabController get a frame
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -67,22 +68,18 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   @override
   Widget build(BuildContext context) {
-  // ignore: avoid_print
-  print('[home] build');
+    final theme = Theme.of(context);
     final tabs = ref.watch(fileTabsProvider);
     final activeTab = ref.watch(activeTabProvider);
     final isLoading = ref.watch(loadingStateProvider);
     final navIndex = ref.watch(navRailIndexProvider);
     final activeIndex = ref.watch(activeTabIndexProvider);
 
-    // Ensure UI rebuilds when tabs change (useful for programmatic tests)
-  ref.listen(fileTabsProvider, (prev, next) {
+    ref.listen(fileTabsProvider, (prev, next) {
       if (mounted) setState(() {});
     });
 
     _syncTabController(tabs.length, activeIndex);
-  // ignore: avoid_print
-  print('[home] tabs=${tabs.length} activeIndex=$activeIndex hasTC=${_tabController != null}');
 
     return Scaffold(
       body: Row(
@@ -91,201 +88,117 @@ class _HomeShellState extends ConsumerState<HomeShell>
             selectedIndex: navIndex,
             onDestinationSelected: (i) =>
                 ref.read(navRailIndexProvider.notifier).state = i,
+            labelType: NavigationRailLabelType.all,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
             leading: Padding(
-              padding: const EdgeInsets.only(top: 12.0),
+              padding: const EdgeInsets.only(top: 8.0, bottom: 24.0),
               child: Column(
-                children: const [
-                  CircleAvatar(
-                    radius: 18,
-                    child: Icon(Icons.settings_ethernet),
+                children: [
+                  Icon(
+                    Icons.explore_outlined,
+                    size: 32,
+                    color: theme.colorScheme.primary,
                   ),
-                  SizedBox(height: 8),
-                  // Keep name visible for tests and branding
-                  Text('ARXML Explorer', style: TextStyle(fontSize: 11)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'ARXML\nExplorer',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
                 ],
               ),
             ),
             destinations: const [
               NavigationRailDestination(
-                icon: Tooltip(
-                  message: 'Editor',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.edit_outlined),
-                      SizedBox(height: 2),
-                      Text('Editor', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                selectedIcon: Tooltip(
-                  message: 'Editor',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.edit),
-                      SizedBox(height: 2),
-                      Text('Editor', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                label: SizedBox.shrink(),
+                icon: Tooltip(message: 'Editor', child: Icon(Icons.edit_outlined)),
+                selectedIcon: Tooltip(message: 'Editor', child: Icon(Icons.edit)),
+                label: Text('Editor'),
               ),
               NavigationRailDestination(
                 icon: Tooltip(
-                  message: 'Workspace',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.folder_open),
-                      SizedBox(height: 2),
-                      Text('Workspace', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                selectedIcon: Tooltip(
-                  message: 'Workspace',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.folder),
-                      SizedBox(height: 2),
-                      Text('Workspace', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                label: SizedBox.shrink(),
+                    message: 'Workspace',
+                    child: Icon(Icons.folder_open_outlined)),
+                selectedIcon:
+                    Tooltip(message: 'Workspace', child: Icon(Icons.folder)),
+                label: Text('Workspace'),
               ),
               NavigationRailDestination(
                 icon: Tooltip(
-                  message: 'Validation',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.rule_folder_outlined),
-                      SizedBox(height: 2),
-                      Text('Validation', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
+                    message: 'Validation',
+                    child: Icon(Icons.rule_folder_outlined)),
                 selectedIcon: Tooltip(
-                  message: 'Validation',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.rule_folder),
-                      SizedBox(height: 2),
-                      Text('Validation', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                label: SizedBox.shrink(),
+                    message: 'Validation', child: Icon(Icons.rule_folder)),
+                label: Text('Validation'),
               ),
               NavigationRailDestination(
                 icon: Tooltip(
-                  message: 'Settings',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.settings_outlined),
-                      SizedBox(height: 2),
-                      Text('Settings', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                selectedIcon: Tooltip(
-                  message: 'Settings',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.settings),
-                      SizedBox(height: 2),
-                      Text('Settings', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                label: SizedBox.shrink(),
+                    message: 'XSDs', child: Icon(Icons.schema_outlined)),
+                selectedIcon:
+                    Tooltip(message: 'XSDs', child: Icon(Icons.schema)),
+                label: Text('XSDs'),
               ),
               NavigationRailDestination(
                 icon: Tooltip(
-                  message: 'XSDs',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.rule_folder_outlined),
-                      SizedBox(height: 2),
-                      Text('XSDs', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                selectedIcon: Tooltip(
-                  message: 'XSDs',
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.rule_folder),
-                      SizedBox(height: 2),
-                      Text('XSDs', style: TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                ),
-                label: SizedBox.shrink(),
+                    message: 'Settings',
+                    child: Icon(Icons.settings_outlined)),
+                selectedIcon:
+                    Tooltip(message: 'Settings', child: Icon(Icons.settings)),
+                label: Text('Settings'),
               ),
             ],
-            trailing: Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Open File',
-                    icon: const Icon(Icons.file_open),
-                    onPressed: () =>
-                        ref.read(fileTabsProvider.notifier).openNewFile(),
+            trailing: Expanded(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Open File',
+                        icon: const Icon(Icons.file_open_outlined),
+                        onPressed: () =>
+                            ref.read(fileTabsProvider.notifier).openNewFile(),
+                      ),
+                      IconButton(
+                        tooltip: 'Create New File',
+                        icon: const Icon(Icons.create_new_folder_outlined),
+                        onPressed: () => ref
+                            .read(fileTabsProvider.notifier)
+                            .createNewFile(),
+                      ),
+                      IconButton(
+                        tooltip: 'Search',
+                        icon: const Icon(Icons.search),
+                        onPressed: () {
+                          showSearch(
+                            context: context,
+                            delegate: CustomSearchDelegate(
+                              null,
+                              getTreeState: () {
+                                final at = ref.read(activeTabProvider);
+                                return at == null
+                                    ? null
+                                    : ref.read(at.treeStateProvider);
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    tooltip: 'Create New File',
-                    icon: const Icon(Icons.create_new_folder),
-                    onPressed: () =>
-                        ref.read(fileTabsProvider.notifier).createNewFile(),
-                  ),
-          IconButton(
-                    tooltip: 'Search',
-                    icon: const Icon(Icons.search),
-                    onPressed: () async {
-            // debug: trace search activation in tests
-            // ignore: avoid_print
-            print('[ui] search icon tapped');
-                      // Allow early taps: wait briefly for an active tab if needed
-                      // Show search immediately; delegate will resolve tree state lazily
-                      // ignore: avoid_print
-                      print('[ui] launching showSearch');
-                      showSearch(
-                        context: context,
-                        delegate: CustomSearchDelegate(
-                          null,
-                          getTreeState: () {
-                            final at = ref.read(activeTabProvider);
-                            return at == null ? null : ref.read(at.treeStateProvider);
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    tooltip: 'Fit All / Reset View',
-                    icon: const Icon(Icons.fit_screen),
-                    onPressed: () =>
-                        ref.read(navRailIndexProvider.notifier).state = 0,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-          const VerticalDivider(width: 1),
+          const VerticalDivider(width: 1, thickness: 1),
           Expanded(
             child: Builder(builder: (context) {
-              // Tabs bar above editor when tabs exist
               final tabsBar = (tabs.isEmpty || _tabController == null)
                   ? const SizedBox.shrink()
                   : Align(
@@ -317,61 +230,64 @@ class _HomeShellState extends ConsumerState<HomeShell>
                       ),
                     );
 
-              if (navIndex == 1) {
-                return WorkspaceView(
-                    onOpenFile: (fp) => ref
-                        .read(fileTabsProvider.notifier)
-                        .openFileAndNavigate(fp, shortNamePath: const []));
-              } else if (navIndex == 2) {
-                return ValidationView(
-                    itemScrollController: itemScrollController);
-              } else if (navIndex == 3) {
-                return ListView(padding: const EdgeInsets.all(16), children: [
-                  SwitchListTile(
-                    title: const Text('Live validation'),
-                    subtitle: const Text('Validate while editing'),
-                    value: ref.watch(liveValidationProvider),
-                    onChanged: (v) =>
-                        ref.read(liveValidationProvider.notifier).state = v,
-                  ),
-                  const Divider(),
-                  SwitchListTile(
-                    title: const Text('Verbose XSD diagnostics'),
-                    subtitle: const Text('Show parser resolution trace'),
-                    value: ref.watch(diagnosticsProvider),
-                    onChanged: (_) =>
-                        ref.read(fileTabsProvider.notifier).toggleDiagnostics(),
-                  ),
-                ]);
-              } else if (navIndex == 4) {
-                return ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: const [
-                    ListTile(title: Text('XSD Catalog')),
-                  ],
-                );
+              Widget currentView;
+              switch (navIndex) {
+                case 1:
+                  currentView = WorkspaceView(
+                      onOpenFile: (fp) => ref
+                          .read(fileTabsProvider.notifier)
+                          .openFileAndNavigate(fp, shortNamePath: const []));
+                  break;
+                case 2:
+                  currentView = ValidationView(
+                      itemScrollController: itemScrollController);
+                  break;
+                case 3:
+                  currentView = const XsdCatalogView();
+                  break;
+                case 4:
+                  currentView = 
+                      ListView(padding: const EdgeInsets.all(16), children: [
+                    SwitchListTile(
+                      title: const Text('Live validation'),
+                      subtitle: const Text('Validate while editing'),
+                      value: ref.watch(liveValidationProvider),
+                      onChanged: (v) =>
+                          ref.read(liveValidationProvider.notifier).state = v,
+                    ),
+                    const Divider(),
+                    SwitchListTile(
+                      title: const Text('Verbose XSD diagnostics'),
+                      subtitle: const Text('Show parser resolution trace'),
+                      value: ref.watch(diagnosticsProvider),
+                      onChanged: (_) => ref
+                          .read(fileTabsProvider.notifier)
+                          .toggleDiagnostics(),
+                    ),
+                  ]);
+                  break;
+                default:
+                  currentView = isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : (activeTab != null && _tabController != null)
+                          ? EditorView(
+                              tabController: _tabController!,
+                              itemScrollController: itemScrollController,
+                              itemPositionsListener: itemPositionsListener,
+                            )
+                          : const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(24.0),
+                                child: Text('Open a file to begin'),
+                              ),
+                            );
               }
-
-              final editorArea = isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : (activeTab != null && _tabController != null)
-                      ? EditorView(
-                          tabController: _tabController!,
-                          itemScrollController: itemScrollController,
-                          itemPositionsListener: itemPositionsListener,
-                        )
-                      : const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(24.0),
-                            child: Text('Open a file to begin'),
-                          ),
-                        );
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  tabsBar,
-                  Expanded(child: editorArea),
+                  if (navIndex == 0) tabsBar,
+                  Expanded(child: currentView),
                 ],
               );
             }),
@@ -381,13 +297,3 @@ class _HomeShellState extends ConsumerState<HomeShell>
     );
   }
 }
-
-class ProviderApp extends StatelessWidget {
-  final Widget child;
-  const ProviderApp({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) => ProviderScope(child: child);
-}
-
-// _RailTile removed to keep rail compact and avoid overflow; using icon-only destinations.

@@ -6,49 +6,57 @@ class AppRoot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xFF0D2A4A);
-    const primaryContainer = Color(0xFF16406F);
-    const secondary = Color(0xFF00C2C7);
-    const secondaryContainer = Color(0xFF6FE4E7);
-    const background = Color(0xFFF7F9FC);
+    final lightScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF0D47A1), // A deep, professional blue
+      brightness: Brightness.light,
+    );
 
-    final colorScheme = const ColorScheme.light(
-      primary: primary,
-      onPrimary: Colors.white,
-      primaryContainer: primaryContainer,
-      secondary: secondary,
-      onSecondary: Color(0xFF062238),
-      secondaryContainer: secondaryContainer,
-      background: background,
-      onBackground: primary,
-      surface: Colors.white,
-      onSurface: primary,
+    final darkScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF42A5F5), // A slightly brighter blue for dark mode
+      brightness: Brightness.dark,
     );
 
     return MaterialApp(
       title: 'ARXML Explorer',
       debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.system, // Or ThemeMode.light, ThemeMode.dark
       theme: ThemeData(
-        colorScheme: colorScheme,
+        colorScheme: lightScheme,
         useMaterial3: true,
-        scaffoldBackgroundColor: background,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
+        scaffoldBackgroundColor: lightScheme.background,
+        appBarTheme: AppBarTheme(
+          backgroundColor: lightScheme.primary,
+          foregroundColor: lightScheme.onPrimary,
           elevation: 0,
-          iconTheme: IconThemeData(color: Colors.white),
+          iconTheme: IconThemeData(color: lightScheme.onPrimary),
           titleTextStyle: TextStyle(
-            color: Colors.white,
+            color: lightScheme.onPrimary,
             fontWeight: FontWeight.w600,
             fontSize: 20,
           ),
         ),
         tooltipTheme: TooltipThemeData(
           decoration: BoxDecoration(
-            color: primary.withOpacity(0.95),
+            color: lightScheme.primary.withOpacity(0.95),
             borderRadius: BorderRadius.circular(6),
           ),
-          textStyle: const TextStyle(color: Colors.white),
+          textStyle: TextStyle(color: lightScheme.onPrimary),
+        ),
+      ),
+      darkTheme: ThemeData(
+        colorScheme: darkScheme,
+        useMaterial3: true,
+        scaffoldBackgroundColor: darkScheme.background,
+        appBarTheme: AppBarTheme(
+          backgroundColor: darkScheme.primary,
+          foregroundColor: darkScheme.onPrimary,
+        ),
+        tooltipTheme: TooltipThemeData(
+          decoration: BoxDecoration(
+            color: darkScheme.primary.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          textStyle: TextStyle(color: darkScheme.onPrimary),
         ),
       ),
       home: home,

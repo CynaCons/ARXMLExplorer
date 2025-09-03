@@ -10,8 +10,9 @@ void main() {
       await tester.pumpWidget(const ProviderScope(child: XmlExplorerApp()));
 
       // Verify main UI elements
-      expect(find.byIcon(Icons.file_open), findsOneWidget);
-      expect(find.byIcon(Icons.create_new_folder), findsOneWidget);
+      // NavigationRail trailing actions now use outlined variants
+      expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
     });
 
     testWidgets('Depth Indicator works', (WidgetTester tester) async {

@@ -20,42 +20,42 @@
 
 ```
 lib/
-├── main.dart                     # App entry point
-├── app_providers.dart            # Global provider configuration
-├── core/                         # Core layer (pure logic)
-│   ├── core.dart                # Core barrel export
-│   ├── models/                  # Data models (ElementNode, etc.)
-│   ├── validation/              # Validation logic and issues
-│   ├── refs/                    # Reference normalization
-│   ├── cache/                   # AST caching (ast_cache.dart)
-│   ├── loaders/                 # File loaders (arxmlloader.dart)
-│   └── xsd/                     # XSD parsing logic
-├── features/                     # Feature modules
-│   ├── editor/                  # Editor feature
-│   │   ├── editor.dart          # Editor barrel export
-│   │   ├── state/               # Editor state (arxml_tree_view_state.dart, file_tabs_provider.dart)
-│   │   │   └── commands/        # Edit commands
-│   │   └── view/                # Editor UI widgets
-│   │       └── widgets/         # Element node widgets, search, etc.
-│   ├── workspace/               # Workspace feature
-│   │   ├── workspace.dart       # Workspace barrel export
-│   │   ├── state/               # Workspace state (workspace_indexer.dart)
-│   │   ├── service/             # Workspace services
-│   │   └── view/                # Workspace UI
-│   └── validation/              # Validation feature
-│       ├── validation.dart      # Validation barrel export
-│       ├── state/               # Validation providers
-│       └── view/                # Validation UI
-├── ui/                          # Shared UI components
-└── res/                         # Resources
+  main.dart                     # App entry point
+  app_providers.dart            # Global provider configuration
+  core/                         # Core layer (pure logic)
+    core.dart                   # Core barrel export
+    models/                     # Data models (ElementNode, etc.)
+    validation/                 # Validation logic and issues
+    refs/                       # Reference normalization
+    cache/                      # AST caching (ast_cache.dart)
+    loaders/                    # File loaders (arxmlloader.dart)
+    xsd/                        # XSD parsing logic
+  features/                     # Feature modules
+    editor/                     # Editor feature
+      editor.dart               # Editor barrel export
+      state/                    # Editor state (arxml_tree_view_state.dart, file_tabs_provider.dart)
+        commands/               # Edit commands
+      view/                     # Editor UI widgets
+        widgets/                # Element widgets, search, etc.
+    workspace/                  # Workspace feature
+      workspace.dart            # Workspace barrel export
+      state/                    # Workspace state (workspace_indexer.dart)
+      service/                  # Workspace services
+      view/                     # Workspace UI
+    validation/                 # Validation feature
+      validation.dart           # Validation barrel export
+      state/                    # Validation providers
+      view/                     # Validation UI
+  ui/                           # Shared UI components
+  res/                          # Resources
 ```
 
 ## Migration Status
-- ✅ All legacy files migrated to proper modular locations
-- ✅ Backward-compatible shims created for smooth transition
-- ✅ Barrel exports implemented for clean imports
-- ✅ Tests updated to use new import structure
-- ✅ 60+ tests passing with new architecture
+- All legacy files migrated to proper modular locations
+- Backward-compatible shims created for smooth transition
+- Barrel exports implemented for clean imports
+- Tests updated to use new import structure
+- 60+ tests passing with new architecture
 
 Key Barrels:
 - core/core.dart: ElementNode, validation primitives, reference normalization, AST cache, ARXML loader
@@ -82,16 +82,16 @@ RefNormalizer (core/refs) plus domain variants for ECUC and Port references unif
 
 ### Recommended Import Patterns:
 ```dart
-// ✅ Use barrel imports for cross-feature dependencies
+// Use barrel imports for cross-feature dependencies
 import 'package:arxml_explorer/core/core.dart';
 import 'package:arxml_explorer/features/editor/editor.dart';
 import 'package:arxml_explorer/features/workspace/workspace.dart';
 
-// ✅ Use relative imports within same feature
+// Use relative imports within same feature
 import '../state/file_tabs_provider.dart';
 import '../../editor.dart';
 
-// ❌ Avoid direct imports from other features
+// Avoid direct imports from other features
 import 'package:arxml_explorer/features/editor/state/arxml_tree_view_state.dart';
 ```
 
@@ -100,3 +100,4 @@ import 'package:arxml_explorer/features/editor/state/arxml_tree_view_state.dart'
 - Features can depend on core but not on other features directly
 - Cross-feature communication through shared state in app_providers.dart
 - Legacy shim imports work but are deprecated
+

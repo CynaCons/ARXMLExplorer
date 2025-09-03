@@ -10,8 +10,8 @@ void main() {
       await tester.pumpWidget(const XmlExplorerApp());
 
       // Verify app starts quickly
-      expect(find.byIcon(Icons.file_open), findsOneWidget);
-      expect(find.byIcon(Icons.create_new_folder), findsOneWidget);
+      expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
     });
 
     // Test XML parsing performance with moderately complex content

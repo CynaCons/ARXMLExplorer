@@ -9,9 +9,9 @@ void main() {
     testWidgets('App contains editing elements', (WidgetTester tester) async {
       await tester.pumpWidget(const XmlExplorerApp());
 
-      // Verify the main UI elements are present for editing
-      expect(find.byIcon(Icons.file_open), findsOneWidget);
-      expect(find.byIcon(Icons.create_new_folder), findsOneWidget);
+      // Verify the main UI elements are present for editing (outlined variants)
+      expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
     });
 
     // Test XML parsing and node editing capabilities

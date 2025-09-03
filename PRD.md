@@ -40,7 +40,7 @@ As a user, I want to:
 
 ### Visual Enhancements & User Experience
 - **Collapsing/Uncollapsing:** Support collapsing and uncollapsing of ARXML content elements.
-- **Default Node Collapsing:** Automatically collapse 'DEFINITION-REF' and 'SHORT-NAME' nodes by default, appending their defining references or shortnames next to the container type for conciseness.
+- **Default Node Collapsing:** Automatically collapse 'DEFINITION-REF', 'SHORT-NAME', and 'ADMIN-DATA' nodes by default, appending their defining references or shortnames next to the container type for conciseness.
 - **Depth Indication:** Replace simple spacing with more visually distinct depth indicators (e.g., spaced dots or horizontal dashes).
 - **Parent-Child Visual Cues:** Implement visual ways to express the relationship between parent and child nodes.
 - **Loading Indicator:** Display a visual loading indicator when ARXML files are being processed and cache data is constructed.

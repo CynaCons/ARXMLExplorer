@@ -41,11 +41,11 @@ void main() {
       await tester.tap(find.text('XSDs').first);
       await tester.pumpAndSettle();
 
-      // XSD Catalog view title
-      expect(find.text('XSD Catalog'), findsOneWidget);
+      // XSD Catalog view title (updated wording)
+      expect(find.textContaining('XSD Catalog'), findsOneWidget);
 
-      // Return to Editor via trailing Fit All / Reset View button
-      await tester.tap(find.byTooltip('Fit All / Reset View'));
+      // Return to Editor by tapping the 'Editor' rail destination
+      await tester.tap(find.text('Editor').first);
       await tester.pumpAndSettle();
       expect(find.text('Open a file to begin'), findsOneWidget);
     });

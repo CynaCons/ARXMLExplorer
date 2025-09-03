@@ -74,8 +74,8 @@ void main() {
         (WidgetTester tester) async {
       await tester.pumpWidget(const XmlExplorerApp());
 
-      // Open a file
-      await tester.tap(find.byIcon(Icons.file_open));
+      // Open a file (outlined variant in NavigationRail)
+      await tester.tap(find.byIcon(Icons.file_open_outlined));
       // bounded pumps to avoid long settle timeouts in CI
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pump(const Duration(milliseconds: 100));

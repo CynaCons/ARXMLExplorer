@@ -1,0 +1,93 @@
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Test</SHORT-NAME>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>''';
+
+      const arxmlLoader = ARXMLFileLoader();
+      final nodes = arxmlLoader.parseXmlContent(testXmlContent);
+
+      // Build app with test provider
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            fileTabsProvider
+                .overrideWith((ref) => TestFileTabsNotifier(ref, nodes)),
+          ],
+          child: const app.XmlExplorerApp(),
+        ),
+      );
+      // Bounded pumps instead of pumpAndSettle
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Get the notifier and simulate file loading
+      final container = ProviderScope.containerOf(
+          tester.element(find.byType(app.XmlExplorerApp)));
+      final notifier =
+          container.read(fileTabsProvider.notifier) as TestFileTabsNotifier;
+
+      print('🧪 Testing TabController state management');
+
+      // Initially should have no tabs
+      expect(find.byType(TabBar), findsNothing);
+      expect(find.text('Open a file to begin'), findsOneWidget);
+
+      // Simulate loading a file
+      await notifier.simulateFileLoad();
+      // Pump a few frames
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Should now have tabs
+      expect(find.byType(TabBar), findsOneWidget);
+      expect(find.byType(TabBarView), findsOneWidget);
+
+      print('✅ TabController state management test passed');
+    }, timeout: const Timeout(Duration(seconds: 45)));
+  });
+}
+
+// Test notifier that can simulate file loading without file picker
+class TestFileTabsNotifier extends FileTabsNotifier {
+  final List<ElementNode> testNodes;
+  final Ref _testRef;
+
+  TestFileTabsNotifier(this._testRef, this.testNodes) : super(_testRef);
+
+  Future<void> simulateFileLoad() async {
+    print('🧪 TestFileTabsNotifier: Starting file load simulation');
+
+    try {
+      // Set loading state
+      _testRef.read(loadingStateProvider.notifier).state = true;
+
+      print('🧪 TestFileTabsNotifier: Loading state set to true');
+
+      // Create a new tab with test data
+      final newTab = FileTabState(
+        path: 'test_file.arxml',
+        treeStateProvider: arxmlTreeStateProvider(testNodes),
+        xsdParser: null, // No XSD for test
+      );
+
+      // Add the tab
+      state = [...state, newTab];
+      _testRef.read(activeTabIndexProvider.notifier).state = state.length - 1;
+
+      print(
+          '🧪 TestFileTabsNotifier: Tab added, state.length = ${state.length}');
+
+      // Removed artificial delay to prevent test hangs
+    } catch (e, stackTrace) {
+      print('❌ TestFileTabsNotifier ERROR: $e');
+      print('Stack trace: $stackTrace');
+    } finally {
+      // Clear loading state
+      _testRef.read(loadingStateProvider.notifier).state = false;
+      print('🧪 TestFileTabsNotifier: Loading state set to false');
+    }
+  }
+}

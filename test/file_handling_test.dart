@@ -8,20 +8,20 @@ void main() {
     testWidgets('Create New File', (WidgetTester tester) async {
       await tester.pumpWidget(const XmlExplorerApp());
 
-      // Tap the "Create New" button
-      await tester.tap(find.byIcon(Icons.create_new_folder));
+      // Tap the "Create New" button (outlined variant in NavigationRail)
+      await tester.tap(find.byIcon(Icons.create_new_folder_outlined));
       await tester.pumpAndSettle();
 
       // Verify the tap action completed (basic functionality test)
-      expect(find.byIcon(Icons.create_new_folder), findsOneWidget);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
     });
 
     testWidgets('App initializes correctly', (WidgetTester tester) async {
       await tester.pumpWidget(const XmlExplorerApp());
 
-      // Verify the main UI elements are present
-      expect(find.byIcon(Icons.file_open), findsOneWidget);
-      expect(find.byIcon(Icons.create_new_folder), findsOneWidget);
+      // Verify the main UI elements are present (outlined variants)
+      expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
     });
 
     // Test the ARXML loader directly without file picker dependency

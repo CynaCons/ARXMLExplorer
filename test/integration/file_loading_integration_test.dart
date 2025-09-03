@@ -26,9 +26,9 @@ void main() {
 
       // Verify initial state
       print('🔍 Verifying initial state...');
-      expect(find.text('ARXML Explorer'), findsOneWidget);
+      expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.text('Open a file to begin'), findsOneWidget);
-      expect(find.byIcon(Icons.file_open), findsOneWidget);
+      expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
 
       print('✅ Initial app state verified - TEST PASSED');
     }, timeout: const Timeout(Duration(seconds: 45)));
@@ -92,7 +92,7 @@ void main() {
 
       // Verify initial state
       print('🔍 Verifying initial state...');
-      expect(find.text('ARXML Explorer'), findsOneWidget);
+      expect(find.byType(NavigationRail), findsOneWidget);
 
       // Trigger file loading by calling the test notifier
       print('🔍 Getting provider container...');

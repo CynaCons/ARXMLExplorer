@@ -31,7 +31,13 @@ class ArxmlParser {
         children: newChildren,
       );
 
-      if (elementText == 'DEFINITION-REF' || elementText == 'SHORT-NAME') {
+      // Default-collapsed containers for improved tree readability
+      // - SHORT-NAME: value container
+      // - DEFINITION-REF: reference value container
+      // - ADMIN-DATA: meta/documentation container
+      if (elementText == 'DEFINITION-REF' ||
+          elementText == 'SHORT-NAME' ||
+          elementText == 'ADMIN-DATA') {
         newNode.isCollapsed = true;
       }
 

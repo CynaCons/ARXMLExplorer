@@ -2,6 +2,84 @@
 
 # ITERATION 1 - UI, Navigation, Workspace & XSD Remediation (Aug 2025 Active Work)
 
+## Meta & Process
+- [x] Repo analysis: Good/Bad/Ugly report delivered (Sep 2025)
+- [x] Read project docs (README, PRD, RULES, architecture)
+- [x] Ran full test suite and captured status summary
+
+### Test Status Snapshot (latest local run)
+- [x] Ran `flutter test` (Flutter 3.35.0 beta) — results:
+  - Passed: 78
+  - Skipped: 1
+  - Failed: 0
+  - Notes: Updated tests to align with NavigationRail labels/icons and default-collapsed behavior.
+
+Resolved test updates:
+- [x] visuals_ux_test: expect outlined icons (`file_open_outlined`, `create_new_folder_outlined`).
+- [x] ui_ux_features_test: expandAll assertion accepts >= initial due to default-collapsed nodes.
+- [x] editing_schema_test: expect outlined icons.
+- [x] file_handling_test: use outlined icons for taps and visibility.
+- [x] integration/file_loading_integration_test: verify `NavigationRail` and initial hint instead of AppBar title; use outlined icon.
+- [x] navigation_rail_test: use `textContaining('XSD Catalog')`; return to Editor by tapping rail label.
+- [x] performance_test: expect outlined icons.
+- [x] search_and_scroll_test: tap outlined file-open icon.
+
+Context: Many failures expect specific AppBar title, labels, or icons. Recent UI refactors (NavigationRail, AppBar) likely renamed/relocated these widgets; tests may need updates to new texts/semantics or the UI should reintroduce stable keys/labels.
+
+## Documentation & Cleanup (Sep 2025)
+- [x] Create RULES.md with dependency rules
+- [x] Refresh README (remove mojibake, add XSD provisioning)
+- [x] Fix mojibake in AGENTS.md and docs/architecture.md
+- [x] Update pubspec description
+- [x] Prune unused deps (provider, fluent_ui, flutter_simple_treeview, plugin_platform_interface)
+- [x] Add coverage/ to .gitignore
+- [x] Add tool to verify XSD presence (tool/verify_xsds.dart)
+
+## Editor Tree Defaults
+- [x] Default-collapse ADMIN-DATA containers in ARXML parse tree
+- [x] Test: ADMIN-DATA nodes start collapsed by default
+- [x] Note behavior in code comments and link to PRD
+
+## Summary of Remaining Tasks
+### Testing
+- [ ] `autosar_xsd_children_test`: Fix XSD children resolution for APPLICATION-INTERFACE.
+- [ ] `search_and_scroll_test.dart`: Stabilize flaky test with deterministic provider-driven paths.
+- [ ] Add Collapse/Expand All UI actions or refactor test to use provider API.
+- [ ] Update legacy test scaffolds to new AppRoot/HomeShell and editor provider APIs.
+- [ ] Tame `pumpAndSettle` in `search_and_scroll_test` with bounded pumps and fast animations.
+- [ ] Write golden test for updated NavigationRail (light/dark).
+- [ ] Write widget test for overflow menu actions (e.g., toggle diagnostics).
+- [ ] Write accessibility test for focus traversal sequence.
+- [ ] Write regression test to ensure stray "ARXML" element is no longer present.
+- [ ] Expand test for keyboard navigation to keep node centered.
+- [ ] Add test for switching from mouse-click highlight to keyboard.
+- [ ] Write golden diff test for NavigationRail indicator alignment.
+- [ ] Add test for schema badge visibility in light & dark themes.
+- [ ] Add test to ensure known invalid child is still reported after detection rewrite.
+- [ ] Add test for warning appearance when no schema is available.
+
+### Accessibility & UI/UX
+- [ ] Ensure minimum tap target of >= 44x44 for rail destinations and toolbar icons.
+- [ ] Implement focus outline & keyboard navigation order for rail & overflow menu.
+- [ ] Perform color contrast audit for new square indicator (WCAG AA).
+- [ ] Audit tooltip text for clarity and consistency.
+- [ ] Fix NavigationRail indicator alignment to exactly overlay icon bounds.
+- [ ] Adjust padding so indicator encloses icon+label without vertical drift.
+- [ ] Fix XSD selector visibility (white-on-white) by applying contrasting background or text color.
+- [ ] Implement UI to manage XSD sources & catalog.
+
+### Features & Logic
+- [ ] Implement optional "loop add" UX (Add Another…) for editing workflow.
+- [ ] Implement lazy build for children on expand in Workspace View for performance.
+- [ ] Implement performance virtualization for long sibling lists (>500) in Workspace View.
+- [ ] Add tests for Workspace View filter to ensure it narrows & highlights results correctly.
+- [ ] Add regression test for Workspace View to ensure only one list is rendered.
+- [ ] Persist XSD catalog in app state and refresh on directory changes.
+- [ ] Document the XSD auto-detection fallback ordering in code comments and link to PRD.
+- [ ] Debounce schema detection while typing when live validation is on.
+- [ ] Ensure parser and indexes are built before running validation after detection changes.
+- [ ] Gate live validation on detection readiness to avoid running with a stale parser.
+
 ## Test Failures Triage (Latest run)
 - [x] Re-ran full test suite; ProviderScope/missing placeholder issues resolved
 - [x] EditorView rendered only root nodes — fixed to use visibleNodes for list rendering (UI now shows full tree)
@@ -305,4 +383,3 @@ Goal: Make schema auto-detection deterministic, resilient to header variations, 
 - AUTOSAR sample XSD child extraction tests (SWC, BSW, namespace)
 - Schema validation basic test (invalid child detection)
 - Ref normalization core case tests
-

@@ -74,7 +74,10 @@ void main() {
       treeNotifier.expandAll();
       await tester.pump(const Duration(milliseconds: 50));
       final expandedState = appContainer.read(newTab.treeStateProvider);
-      expect(expandedState.visibleNodes.length, initialVisibleCount);
+      // With default-collapsed containers (e.g., ADMIN-DATA), expandAll may reveal
+      // more nodes than initially visible; accept >= initial count.
+      expect(expandedState.visibleNodes.length,
+          greaterThanOrEqualTo(initialVisibleCount));
     }, timeout: const Timeout(Duration(seconds: 45)));
   });
 }
