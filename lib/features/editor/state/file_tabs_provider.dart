@@ -224,8 +224,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         final content = await File(_currentXsdPath!).readAsString();
         _currentXsdParser = XsdParser(content, verbose: verbose);
       } catch (e, st) {
-        Log.warn('xsd', 'Failed to reload session schema $_currentXsdPath',
-            e, st);
+        Log.warn(
+            'xsd', 'Failed to reload session schema $_currentXsdPath', e, st);
       }
     }
     final updated = <FileTabState>[];
@@ -285,7 +285,8 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
             return (c, 'direct');
           }
         } catch (e) {
-          Log.verbose(diag, 'xsd-detect', 'direct path check failed for $c: $e');
+          Log.verbose(
+              diag, 'xsd-detect', 'direct path check failed for $c: $e');
         }
       }
       // 3) Bundled schema directories (locator-resolved, not cwd-relative)

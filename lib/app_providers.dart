@@ -40,4 +40,3 @@ final selectedIssueIndexProvider = StateProvider<int?>((ref) => null);
 
 // Active shell navigation index (0 = Editor)
 final navRailIndexProvider = StateProvider<int>((ref) => 0);
-

@@ -30,10 +30,18 @@ void main() {
         (tester) async {
       await pumpShell(tester);
 
+      // Primary actions stay on the rail...
+      expect(find.byKey(const Key('action-open-file')), findsOneWidget);
       expect(find.byKey(const Key('action-save')), findsOneWidget);
-      expect(find.byKey(const Key('action-save-all')), findsOneWidget);
       expect(find.byKey(const Key('action-undo')), findsOneWidget);
       expect(find.byKey(const Key('action-redo')), findsOneWidget);
+
+      // ...secondary ones moved into the overflow menu.
+      expect(find.byKey(const Key('action-save-all')), findsNothing);
+      await tester.tap(find.byKey(const Key('action-more')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('action-save-all')), findsOneWidget);
+      expect(find.byKey(const Key('action-search')), findsOneWidget);
     });
 
     testWidgets('Undo and Redo are disabled until an edit is made',
@@ -75,7 +83,8 @@ void main() {
 
       await tester.tap(find.byKey(const Key('action-undo')));
       await tester.pump();
-      expect(root.children.length, before, reason: 'Undo should revert the add');
+      expect(root.children.length, before,
+          reason: 'Undo should revert the add');
       expect(container.read(tab.treeStateProvider).canRedo, isTrue);
 
       await tester.tap(find.byKey(const Key('action-redo')));

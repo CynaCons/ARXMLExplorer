@@ -78,8 +78,11 @@ void main() {
       final container = await pumpShell(tester);
       await openFixture(tester, container);
 
-      // Simulate search and tap
-      await tester.tap(find.byIcon(Icons.search));
+      // Search moved into the rail's overflow menu when the rail was
+      // decluttered; go through the menu rather than a bare icon lookup.
+      await tester.tap(find.byKey(const Key('action-more')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('action-search')));
       // Wait for search overlay to appear
       bool appeared = false;
       for (int i = 0; i < 40; i++) {

@@ -12,7 +12,7 @@ void main() {
       // Verify main UI elements
       // NavigationRail trailing actions now use outlined variants
       expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
+      expect(find.byKey(const Key('action-more')), findsOneWidget);
     });
 
     testWidgets('Depth Indicator works', (WidgetTester tester) async {

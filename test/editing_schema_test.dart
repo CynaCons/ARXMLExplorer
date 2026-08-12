@@ -11,7 +11,8 @@ void main() {
 
       // Verify the main UI elements are present for editing (outlined variants)
       expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
+      // New File now lives behind the rail's overflow menu.
+      expect(find.byKey(const Key('action-more')), findsOneWidget);
     });
 
     // Test XML parsing and node editing capabilities

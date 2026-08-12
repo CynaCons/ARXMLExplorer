@@ -11,7 +11,7 @@ void main() {
 
       // Verify app starts quickly
       expect(find.byIcon(Icons.file_open_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.create_new_folder_outlined), findsOneWidget);
+      expect(find.byKey(const Key('action-more')), findsOneWidget);
     });
 
     // Test XML parsing performance with moderately complex content

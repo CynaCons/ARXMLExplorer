@@ -73,7 +73,8 @@ class _XsdCatalogViewState extends ConsumerState<XsdCatalogView> {
                       const Spacer(),
                       TextButton.icon(
                         onPressed: () async {
-                          final dir = await fp.FilePicker.platform.getDirectoryPath();
+                          final dir =
+                              await fp.FilePicker.platform.getDirectoryPath();
                           if (dir != null) {
                             await ref
                                 .read(xsdCatalogProvider.notifier)
@@ -141,8 +142,7 @@ class _XsdCatalogViewState extends ConsumerState<XsdCatalogView> {
                               child: Text('No schemas discovered yet'),
                             )
                           : Builder(builder: (context) {
-                              final entries = state.byBasename.entries
-                                  .toList()
+                              final entries = state.byBasename.entries.toList()
                                 ..sort((a, b) => a.key.compareTo(b.key));
                               final tiles = entries
                                   .map((e) => ListTile(

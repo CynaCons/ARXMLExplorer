@@ -23,9 +23,11 @@ void main() {
       ),
     ));
 
-    // Open context menu and tap Add Child
-    final tile = find.byType(ListTile);
-    await tester.longPress(tile);
+    // Open context menu and tap Add Child.
+    // Target the row widget, not its internal layout: rows dropped ListTile for
+    // a plain Row when the per-row render cost was cut (53 ms -> ~4 ms for a
+    // screenful), and this finder broke with it.
+    await tester.longPress(find.byType(ElementNodeWidget));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add Child'));
     await tester.pumpAndSettle();

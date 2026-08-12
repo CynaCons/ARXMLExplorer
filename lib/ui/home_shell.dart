@@ -120,6 +120,30 @@ class _HomeShellState extends ConsumerState<HomeShell>
         );
   }
 
+  void _openSearch() {
+    showSearch(
+      context: context,
+      delegate: CustomSearchDelegate(
+        null,
+        getTreeState: () {
+          final at = ref.read(activeTabProvider);
+          return at == null ? null : ref.read(at.treeStateProvider);
+        },
+      ),
+    );
+  }
+
+  void _onMoreAction(_MoreAction action) {
+    switch (action) {
+      case _MoreAction.newFile:
+        ref.read(fileTabsProvider.notifier).createNewFile();
+      case _MoreAction.saveAll:
+        _saveAll();
+      case _MoreAction.search:
+        _openSearch();
+    }
+  }
+
   void _toast(String message) {
     final messenger = ScaffoldMessenger.maybeOf(context);
     messenger?.showSnackBar(
@@ -151,8 +175,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
       onSaveAll: _saveAll,
       onUndo: _undo,
       onRedo: _redo,
-      child: _buildScaffold(context, theme, tabs, activeTab, activeIndex,
-          navIndex, isLoading),
+      child: _buildScaffold(
+          context, theme, tabs, activeTab, activeIndex, navIndex, isLoading),
     );
   }
 
@@ -173,63 +197,48 @@ class _HomeShellState extends ConsumerState<HomeShell>
             onDestinationSelected: (i) =>
                 ref.read(navRailIndexProvider.notifier).state = i,
             labelType: NavigationRailLabelType.all,
-            useIndicator: false,
+            // Material 3's own indicator: one soft pill behind the active
+            // destination. Every icon used to carry its own 44x44 outlined box,
+            // which put five competing boxes on screen at once.
+            useIndicator: true,
+            indicatorColor: theme.colorScheme.secondaryContainer,
+            minWidth: 72,
             leading: Padding(
-              padding: const EdgeInsets.only(top: 8.0, bottom: 24.0),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.explore_outlined,
-                    size: 32,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'ARXML\nExplorer',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ],
+              padding: const EdgeInsets.only(top: 12.0, bottom: 16.0),
+              child: Tooltip(
+                message: 'ARXML Explorer',
+                child: Icon(
+                  Icons.account_tree_outlined,
+                  size: 26,
+                  color: theme.colorScheme.primary,
+                ),
               ),
             ),
-            destinations: [
-              _buildRailDestination(
-                context,
-                tooltip: 'Editor',
-                label: 'Editor',
-                icon: Icons.edit_outlined,
-                selectedIcon: Icons.edit,
+            destinations: const [
+              NavigationRailDestination(
+                icon: Icon(Icons.edit_outlined),
+                selectedIcon: Icon(Icons.edit),
+                label: Text('Editor'),
               ),
-              _buildRailDestination(
-                context,
-                tooltip: 'Workspace',
-                label: 'Workspace',
-                icon: Icons.folder_open_outlined,
-                selectedIcon: Icons.folder,
+              NavigationRailDestination(
+                icon: Icon(Icons.folder_open_outlined),
+                selectedIcon: Icon(Icons.folder),
+                label: Text('Workspace'),
               ),
-              _buildRailDestination(
-                context,
-                tooltip: 'Validation',
-                label: 'Validation',
-                icon: Icons.rule_folder_outlined,
-                selectedIcon: Icons.rule_folder,
+              NavigationRailDestination(
+                icon: Icon(Icons.rule_folder_outlined),
+                selectedIcon: Icon(Icons.rule_folder),
+                label: Text('Validation'),
               ),
-              _buildRailDestination(
-                context,
-                tooltip: 'XSDs',
-                label: 'XSDs',
-                icon: Icons.schema_outlined,
-                selectedIcon: Icons.schema,
+              NavigationRailDestination(
+                icon: Icon(Icons.schema_outlined),
+                selectedIcon: Icon(Icons.schema),
+                label: Text('XSDs'),
               ),
-              _buildRailDestination(
-                context,
-                tooltip: 'Settings',
-                label: 'Settings',
-                icon: Icons.settings_outlined,
-                selectedIcon: Icons.settings,
+              NavigationRailDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: Text('Settings'),
               ),
             ],
             trailing: Expanded(
@@ -237,6 +246,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 8.0),
+                  // Four primary actions plus one overflow, instead of seven
+                  // buttons and two dividers stacked down the rail.
                   child: SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -248,25 +259,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
                           onPressed: _openFile,
                         ),
                         IconButton(
-                          key: const Key('action-new-file'),
-                          tooltip: 'Create New File',
-                          icon: const Icon(Icons.create_new_folder_outlined),
-                          onPressed: () => ref
-                              .read(fileTabsProvider.notifier)
-                              .createNewFile(),
-                        ),
-                        const Divider(indent: 12, endIndent: 12),
-                        IconButton(
                           key: const Key('action-save'),
                           tooltip: 'Save  (Ctrl+S)',
                           icon: const Icon(Icons.save_outlined),
                           onPressed: activeTab == null ? null : _save,
-                        ),
-                        IconButton(
-                          key: const Key('action-save-all'),
-                          tooltip: 'Save All  (Ctrl+Shift+S)',
-                          icon: const Icon(Icons.save_as_outlined),
-                          onPressed: tabs.isEmpty ? null : _saveAll,
                         ),
                         IconButton(
                           key: const Key('action-undo'),
@@ -280,25 +276,44 @@ class _HomeShellState extends ConsumerState<HomeShell>
                           icon: const Icon(Icons.redo),
                           onPressed: _canRedo(activeTab) ? _redo : null,
                         ),
-                        const Divider(indent: 12, endIndent: 12),
-                        IconButton(
-                          key: const Key('action-search'),
-                          tooltip: 'Search  (Ctrl+F)',
-                          icon: const Icon(Icons.search),
-                          onPressed: () {
-                            showSearch(
-                              context: context,
-                              delegate: CustomSearchDelegate(
-                                null,
-                                getTreeState: () {
-                                  final at = ref.read(activeTabProvider);
-                                  return at == null
-                                      ? null
-                                      : ref.read(at.treeStateProvider);
-                                },
+                        PopupMenuButton<_MoreAction>(
+                          key: const Key('action-more'),
+                          tooltip: 'More actions',
+                          icon: const Icon(Icons.more_horiz),
+                          position: PopupMenuPosition.under,
+                          onSelected: (action) => _onMoreAction(action),
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(
+                              key: Key('action-new-file'),
+                              value: _MoreAction.newFile,
+                              child: ListTile(
+                                dense: true,
+                                leading: Icon(Icons.note_add_outlined),
+                                title: Text('New File'),
                               ),
-                            );
-                          },
+                            ),
+                            PopupMenuItem(
+                              key: const Key('action-save-all'),
+                              value: _MoreAction.saveAll,
+                              enabled: tabs.isNotEmpty,
+                              child: const ListTile(
+                                dense: true,
+                                leading: Icon(Icons.save_as_outlined),
+                                title: Text('Save All'),
+                                trailing: Text('Ctrl+Shift+S'),
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              key: Key('action-search'),
+                              value: _MoreAction.search,
+                              child: ListTile(
+                                dense: true,
+                                leading: Icon(Icons.search),
+                                title: Text('Search'),
+                                trailing: Text('Ctrl+F'),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -411,6 +426,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
 enum _TabMenuAction { close }
 
+/// Secondary rail actions, moved off the rail into an overflow menu so the
+/// primary four (Open, Save, Undo, Redo) stay visible without a stack of
+/// seven buttons and two dividers running down the side.
+enum _MoreAction { newFile, saveAll, search }
+
 class _SaveIntent extends Intent {
   const _SaveIntent();
 }
@@ -461,76 +481,16 @@ class _ShellShortcuts extends StatelessWidget {
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
-          _SaveIntent: CallbackAction<_SaveIntent>(
-              onInvoke: (_) => onSave.call()),
-          _SaveAllIntent: CallbackAction<_SaveAllIntent>(
-              onInvoke: (_) => onSaveAll.call()),
+          _SaveIntent:
+              CallbackAction<_SaveIntent>(onInvoke: (_) => onSave.call()),
+          _SaveAllIntent:
+              CallbackAction<_SaveAllIntent>(onInvoke: (_) => onSaveAll.call()),
           _UndoIntent:
               CallbackAction<_UndoIntent>(onInvoke: (_) => onUndo.call()),
           _RedoIntent:
               CallbackAction<_RedoIntent>(onInvoke: (_) => onRedo.call()),
         },
         child: child,
-      ),
-    );
-  }
-}
-
-NavigationRailDestination _buildRailDestination(
-  BuildContext context, {
-  required String tooltip,
-  required String label,
-  required IconData icon,
-  IconData? selectedIcon,
-}) {
-  return NavigationRailDestination(
-    icon: _SquareRailIcon(
-      iconData: icon,
-      tooltip: tooltip,
-    ),
-    selectedIcon: _SquareRailIcon(
-      iconData: selectedIcon ?? icon,
-      tooltip: tooltip,
-      selected: true,
-    ),
-    label: Text(label),
-  );
-}
-
-class _SquareRailIcon extends StatelessWidget {
-  const _SquareRailIcon({
-    required this.iconData,
-    required this.tooltip,
-    this.selected = false,
-  });
-
-  final IconData iconData;
-  final String tooltip;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    return Tooltip(
-      message: tooltip,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color:
-              selected ? colors.primary.withOpacity(0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? colors.primary : colors.outline.withOpacity(0.35),
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Icon(
-          iconData,
-          color: selected ? colors.primary : colors.onSurfaceVariant,
-        ),
       ),
     );
   }

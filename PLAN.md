@@ -310,6 +310,43 @@
 - [ ] Evaluate AppImage or Flatpak packaging for distribution
 - [ ] Document the Linux XSD provisioning path (~/.local/share/arxml_explorer/xsd or ARXML_XSD_DIR)
 
+## v0.6 — UI Declutter & Editor Performance
+> Reduce visual noise in the navigation rail, and make large ARXML files scrollable.
+
+### v0.6.0 — Performance measurement harness (COMPLETE)
+**Goal:** A repeatable baseline before optimising anything.
+- [x] Add test/support/arxml_generator.dart: synthetic ARXML at a controlled node count, shaped like real ECU config
+- [x] Add test/performance/large_file_benchmark_test.dart sweeping 5k / 20k / 50k nodes
+- [x] Measure parse, full tree walk, tree state init, expandAll, collapseAll and single toggle
+- [x] Measure the 40-row (one screenful) rebuild cost, with and without validation issues
+- [x] Warm up before measuring: the first pump pays JIT and cold caches, which made whichever case ran second look artificially fast and once reported a negative badge overhead
+- [x] Baseline at ~41k nodes: parse 107 ms, tree init 20 ms, expandAll 9 ms, 40-row rebuild 53 ms (71 ms with issues) against a 16.6 ms frame budget
+
+### v0.6.1 — Editor scroll performance (COMPLETE)
+**Goal:** A screenful of rows rebuilds inside the frame budget.
+- [x] ROOT CAUSE: every row called ref.watch(treeStateProvider), so any state change rebuilt every visible row. Use select() for just isSelected / isContextMenuTarget.
+- [x] ROOT CAUSE: ValidationBadge walked its whole subtree and rescanned every issue per row, per frame - a row near the root walked the entire document
+- [x] Add nodeIssueIndexProvider: one post-order walk builds node id -> aggregated severity, count and messages; rows just look themselves up
+- [x] nodeIssueIndexProvider watches only rootNodes, so selection and hover changes do not invalidate it
+- [x] Replace per-row ListTile + AnimatedContainer with Row + ColoredBox; the implicit animation allocated a ticker per row
+- [x] Replace AnimatedRotation with Transform.rotate on the chevron
+- [x] Wrap rows in RepaintBoundary so hover and selection repaints do not dirty the viewport
+- [x] Fixed row height (kRowHeight) so the list can skip per-row layout measurement
+- [x] Drop ScrollablePositionedList.separated: a Divider between every row doubled the widget count for a hairline
+- [x] Key rows by node id so elements are reused as the visible window shifts
+- [x] RefIndicator bails before computeBasePath and three RefNormalizer calls when no workspace is indexed
+- [x] DepthIndicator skips CustomPaint at depth <= 1 and shares one Paint instead of allocating per row
+- [x] RESULT: 40-row rebuild 53 ms -> 4.6 ms (12x); with validation issues 71 ms -> 6.9 ms (10x). Both inside the 16.6 ms budget.
+
+### v0.6.2 — Navigation rail declutter (COMPLETE)
+**Goal:** One clear focal point instead of competing boxes and a stack of buttons.
+- [x] Remove the 44x44 outlined box around every destination icon - five boxes competed for attention at once
+- [x] Use Material 3's own NavigationRail indicator for the selected destination
+- [x] Simplify the leading block from a two-line logo to a single tooltipped icon
+- [x] Keep four primary actions on the rail (Open, Save, Undo, Redo); move New File, Save All and Search into an overflow menu
+- [x] Remove both rail dividers
+- [x] Update tests for the relocated actions and give them a desktop-sized surface
+
 ## Future (Backlog)
 - [ ] Accessibility: minimum 44x44 tap target for rail destinations and toolbar icons
 - [ ] Accessibility: focus outline & keyboard navigation order for rail & overflow menu
@@ -341,3 +378,5 @@
 - [ ] Expand keyboard navigation test: ArrowDown keeps the node centred beyond the initial window
 - [ ] Test: switching from mouse-click highlight to keyboard removes prior hover styling
 - [ ] MSI packaging for Windows distribution
+- [ ] Parse and build the XSD parser off the main isolate: a 9 MB AUTOSAR schema still costs ~seconds
+- [ ] Chunked / windowed loading for documents beyond ~200k nodes

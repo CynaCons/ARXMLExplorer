@@ -33,8 +33,8 @@ void main() {
       }
 
       walk(roots);
-      expect(isCollapsed, isTrue, reason: 'ADMIN-DATA should be collapsed by default');
+      expect(isCollapsed, isTrue,
+          reason: 'ADMIN-DATA should be collapsed by default');
     });
   });
 }
-

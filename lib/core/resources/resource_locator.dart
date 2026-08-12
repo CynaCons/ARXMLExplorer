@@ -95,7 +95,8 @@ class ResourceLocator {
         if (!d.existsSync()) continue;
         final lower = wanted.toLowerCase();
         for (final entity in d.listSync(followLinks: false)) {
-          if (entity is File && p.basename(entity.path).toLowerCase() == lower) {
+          if (entity is File &&
+              p.basename(entity.path).toLowerCase() == lower) {
             return entity.path;
           }
         }

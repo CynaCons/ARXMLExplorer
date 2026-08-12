@@ -62,9 +62,10 @@ class XsdParser {
             parentElementDef, validChildElements, visited);
         _v('Collected ${validChildElements.toSet().length} candidates for "$cacheKey"');
       } catch (e, st) {
-        Log.verbose(verbose, 'xsd',
-            'Could not extract children for $cacheKey: $e');
-        if (!verbose) Log.warn('xsd', 'child extraction failed for $cacheKey', e, st);
+        Log.verbose(
+            verbose, 'xsd', 'Could not extract children for $cacheKey: $e');
+        if (!verbose)
+          Log.warn('xsd', 'child extraction failed for $cacheKey', e, st);
       }
     }
     final result = validChildElements.toSet().toList();

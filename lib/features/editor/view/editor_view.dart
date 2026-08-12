@@ -333,7 +333,10 @@ class _EditorViewState extends ConsumerState<EditorView> {
                           },
                         ),
                       },
-                      child: ScrollablePositionedList.separated(
+                      // Not `.separated`: a Divider between every row doubled
+                      // the widget count for a purely cosmetic hairline. The
+                      // row draws its own bottom border instead.
+                      child: ScrollablePositionedList.builder(
                         itemScrollController: widget.itemScrollController,
                         itemPositionsListener: widget.itemPositionsListener,
                         // Use visibleNodes so expanded children are shown, not just roots
@@ -342,15 +345,15 @@ class _EditorViewState extends ConsumerState<EditorView> {
                           final ElementNode node =
                               treeState.visibleNodes[index];
                           return ElementNodeWidget(
+                            // Keyed by node id so element and state are reused
+                            // across rebuilds instead of being torn down when
+                            // the visible window shifts.
+                            key: ValueKey<int>(node.id),
                             node: node,
                             xsdParser: tab.xsdParser,
                             treeStateProvider: tab.treeStateProvider,
                           );
                         },
-                        separatorBuilder: (context, index) => const Divider(
-                          height: 1,
-                          thickness: 0.2,
-                        ),
                       ),
                     );
                   });

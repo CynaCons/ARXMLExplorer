@@ -12,7 +12,8 @@ class AppRoot extends StatelessWidget {
     );
 
     final darkScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF42A5F5), // A slightly brighter blue for dark mode
+      seedColor:
+          const Color(0xFF42A5F5), // A slightly brighter blue for dark mode
       brightness: Brightness.dark,
     );
 

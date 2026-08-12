@@ -14,8 +14,16 @@ class RefIndicator extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (node.elementText != 'DEFINITION-REF' || node.children.isEmpty)
+    if (node.elementText != 'DEFINITION-REF' || node.children.isEmpty) {
       return const SizedBox.shrink();
+    }
+    // Bail before the expensive part when no workspace is indexed: without
+    // targets there is nothing to link to, and computeBasePath walks to the
+    // root while RefNormalizer runs three normalisations — per row, per frame.
+    final hasTargets =
+        ref.watch(workspaceIndexProvider.select((s) => s.targets.isNotEmpty));
+    if (!hasTargets) return const SizedBox.shrink();
+
     final raw = node.children.first.elementText.trim();
     final idx = ref.watch(workspaceIndexProvider);
     final basePath = computeBasePath(node);
