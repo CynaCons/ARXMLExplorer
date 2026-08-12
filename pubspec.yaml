@@ -43,8 +43,6 @@ dependencies:
   flutter_riverpod: ^2.6.1
   scrollable_positioned_list: ^0.3.8
   path: ^1.8.3
-  arxml_core:
-    path: packages/arxml_core
   shared_preferences: ^2.2.3
 
 dev_dependencies:
@@ -70,10 +68,14 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # Ship the AUTOSAR schemas with the build so an installed app can find them
+  # without a source checkout. The directory always exists (it holds a tracked
+  # README) even though the .xsd files themselves are gitignored, so this is
+  # safe on a bare clone. ResourceLocator looks here first among the
+  # executable-relative candidates:
+  #   <exe dir>/data/flutter_assets/lib/res/xsd/
+  assets:
+    - lib/res/xsd/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

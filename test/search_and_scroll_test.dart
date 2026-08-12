@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:arxml_explorer/core/core.dart';
 
 import 'package:arxml_explorer/features/editor/state/testing/element_node_controller.dart';
-import 'package:arxml_explorer/main.dart' show XmlExplorerApp;
+
+import 'support/open_fixture.dart';
 
 void main() {
   group('Search and Scroll', () {
@@ -72,13 +73,10 @@ void main() {
     testWidgets(
         'Search for a deeply nested node, tap suggestion, and verify scroll',
         (WidgetTester tester) async {
-      await tester.pumpWidget(const XmlExplorerApp());
-
-      // Open a file (outlined variant in NavigationRail)
-      await tester.tap(find.byIcon(Icons.file_open_outlined));
-      // bounded pumps to avoid long settle timeouts in CI
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pump(const Duration(milliseconds: 100));
+      // Drive the provider rather than tapping Open File: the icon now opens
+      // the platform picker, which a widget test cannot answer.
+      final container = await pumpShell(tester);
+      await openFixture(tester, container);
 
       // Simulate search and tap
       await tester.tap(find.byIcon(Icons.search));
@@ -107,8 +105,11 @@ void main() {
       await tester.tap(find.text('OsCounterValue').last);
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify the node is now visible and scrolled to
-      expect(find.textContaining('OsCounterValue'), findsOneWidget);
+      // Verify the node is now visible and scrolled to.
+      // findsWidgets, not findsOneWidget: the tree renders the SHORT-NAME row
+      // and its inline value, so the text legitimately appears more than once
+      // once enough of the tree fits on screen.
+      expect(find.textContaining('OsCounterValue'), findsWidgets);
     });
   });
 }

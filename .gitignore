@@ -44,3 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 lib/res/xsd/*.xsd
+
+# Stray build/report artifacts
+test_report.jsonl
+__tmp.txt

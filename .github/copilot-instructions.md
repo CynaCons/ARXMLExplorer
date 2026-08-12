@@ -1,23 +1,26 @@
-# ARXMLExplorer — Copilot Instructions for AI Coding Agents
+# ARXMLExplorer — Copilot Instructions
 
-You are implementing an ARXML Explorer Flutter-based application based on user prompts and requests.
+See [AGENTS.md](../AGENTS.md) in the repository root for the full build, run,
+test and architecture guidance. It is the single source of truth for all agent
+tooling; this file exists only so GitHub Copilot picks it up.
 
-## Project Conventions
-  - The user communicates you requests and feedback. You incorporate them in PLAN.md in the form of checklist items, categorized by features. 
-  - You then implement the features and checklist elements as per user request.
-  - Do not stop, until the user request is complete
-  - Never request user approval - do what the user asks. Do it fully and completely. 
-  - Update PLAN.md in realtime whenever something is ongoing or completed.
+## Build and run
 
-## Documentation Sources
-- Primary planning & execution checklist: PLAN.md (always update statuses here in real time).
-- Product requirements & scope narrative: PRD.md.
-- Vision / directional documents: PVD.md (if present) and RULES.md for coding/interaction rules.
-- Architectural / feature rationale should reference these docs; do not duplicate – link back instead.
+```bash
+flutter pub get
+flutter analyze          # must be 0 errors, 0 warnings
+flutter test             # must be green
+flutter run -d windows   # or -d linux / -d macos
+```
 
-## Workflow Reminder
-1. Parse user request → translate into PLAN.md checklist items (create if missing).
-2. Implement code & tests iteratively; keep analyzer clean.
-3. Update PLAN.md status (e.g., [x]) as soon as a subtask is done.
-4. Avoid asking for confirmation; proceed unless conflict with higher system instructions.
+## Non-negotiables
 
+- Done means `flutter analyze` clean **and** `flutter test` green. Info-level
+  lints are an accepted backlog; errors and warnings are not.
+- `lib/core` is pure Dart — no Flutter, no plugins, no `features/` or `ui/`
+  imports. CI enforces this.
+- `PLAN.md` is written by the powerplan MCP, never by hand.
+- No `print()` in `lib/` (use `core/diagnostics/Log`), no bare `catch (_) {}`,
+  and never hard-code `lib/res/xsd/...` (use `core/resources/ResourceLocator`).
+- In widget tests, wrap `dart:io` work in `tester.runAsync()` and open files via
+  `test/support/open_fixture.dart`.

@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.35.0"
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+        continue-on-error: true
+
+      # `flutter analyze` exits non-zero on any issue, including the info-level
+      # lints this repo still carries. Gate the build on errors and warnings
+      # only, and print the rest so the count stays visible without blocking.
+      - name: Analyze (fail on errors and warnings)
+        run: |
+          set +e
+          flutter analyze --no-pub > analyze.txt 2>&1
+          set -e
+          echo "::group::Full analyzer output"
+          cat analyze.txt
+          echo "::endgroup::"
+
+          errors=$(grep -cE '^ +error - ' analyze.txt || true)
+          warnings=$(grep -cE '^ +warning - ' analyze.txt || true)
+          infos=$(grep -cE '^ +info - ' analyze.txt || true)
+          echo "errors=$errors warnings=$warnings info=$infos"
+
+          {
+            echo "### Analyzer"
+            echo ""
+            echo "| Severity | Count |"
+            echo "| --- | --- |"
+            echo "| error | $errors |"
+            echo "| warning | $warnings |"
+            echo "| info | $infos |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$errors" -ne 0 ] || [ "$warnings" -ne 0 ]; then
+            echo "::error::analyzer reported $errors error(s) and $warnings warning(s)"
+            exit 1
+          fi
+
+  layering:
+    name: Layer boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The dart_code_metrics `banned-imports` config in analysis_options.yaml
+      # only runs under the DCM CLI, so `flutter analyze` never enforced it and
+      # violations accumulated. This grep is crude but it actually runs.
+      - name: Core must stay pure Dart
+        run: |
+          set -e
+          # Deny Flutter, any Flutter plugin that pulls in platform UI, and the
+          # application/presentation layers.
+          violations=$(grep -rnE "^import 'package:(flutter|flutter_riverpod|file_picker|desktop_drop|shared_preferences|scrollable_positioned_list|arxml_explorer/(ui|features))/" lib/core || true)
+          if [ -n "$violations" ]; then
+            echo "::error::lib/core must be pure Dart — no Flutter, plugins, features or ui"
+            echo "$violations"
+            exit 1
+          fi
+          echo "core layer clean"
+
+      - name: Features must not import ui
+        run: |
+          set -e
+          violations=$(grep -rnE "^import 'package:arxml_explorer/ui/" lib/features || true)
+          if [ -n "$violations" ]; then
+            echo "::error::lib/features must not depend on lib/ui"
+            echo "$violations"
+            exit 1
+          fi
+          echo "feature layer clean"
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Licensed AUTOSAR schemas are not committed (see README "Provisioning
+      # AUTOSAR XSDs"). Tests that need them skip themselves with a message, so
+      # the suite is green on a bare checkout.
+      - name: Report schema availability
+        shell: bash
+        run: dart run tool/verify_xsds.dart || true
+
+      - name: Run tests
+        run: flutter test --no-pub --reporter expanded
+
+  build-linux:
+    name: Build (linux)
+    runs-on: ubuntu-latest
+    # Enabled once the linux/ runner exists — see PLAN.md v0.5.0.
+    if: ${{ hashFiles('linux/CMakeLists.txt') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Build
+        run: flutter build linux --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arxml-explorer-linux
+          path: build/linux/x64/release/bundle
+          if-no-files-found: error

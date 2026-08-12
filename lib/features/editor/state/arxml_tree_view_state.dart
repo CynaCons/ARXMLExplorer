@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:arxml_explorer/core/diagnostics/log.dart';
 import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 import 'package:arxml_explorer/core/models/element_node.dart';
 import 'dart:collection';
@@ -18,6 +19,12 @@ class ArxmlTreeState {
   final int? selectedNodeId; // NEW: keyboard selection
   final int? pendingCenterNodeId; // NEW: request to center this node in view
 
+  /// Mirrors of the notifier's command stacks. Kept on the state (not just as
+  /// notifier getters) so toolbar buttons can `ref.watch` them and rebuild when
+  /// an edit lands.
+  final bool canUndo;
+  final bool canRedo;
+
   ArxmlTreeState({
     required this.rootNodes,
     required this.visibleNodes,
@@ -25,6 +32,8 @@ class ArxmlTreeState {
     this.contextMenuNodeId,
     this.selectedNodeId,
     this.pendingCenterNodeId,
+    this.canUndo = false,
+    this.canRedo = false,
   });
 
   ArxmlTreeState copyWith({
@@ -34,6 +43,8 @@ class ArxmlTreeState {
     bool clearSelection = false,
     int? pendingCenterNodeId,
     bool clearPendingCenter = false,
+    bool? canUndo,
+    bool? canRedo,
   }) {
     return ArxmlTreeState(
       rootNodes: rootNodes,
@@ -46,6 +57,8 @@ class ArxmlTreeState {
       pendingCenterNodeId: clearPendingCenter
           ? null
           : (pendingCenterNodeId ?? this.pendingCenterNodeId),
+      canUndo: canUndo ?? this.canUndo,
+      canRedo: canRedo ?? this.canRedo,
     );
   }
 }
@@ -63,8 +76,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
   ArxmlTreeStateNotifier(this.initialNodes) : super(_initState(initialNodes));
 
   static ArxmlTreeState _initState(List<ElementNode> rootNodes) {
-    // ignore: avoid_print
-    print('[tree] initState start rootCount=' + rootNodes.length.toString());
+    Log.debug('tree', 'initState rootCount=${rootNodes.length}');
     final flatMap = <int, ElementNode>{};
     int idCounter = 0;
     void buildFlatMap(ElementNode node, ElementNode? parent) {
@@ -81,8 +93,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     }
 
     final visibleNodes = _getVisibleNodes(rootNodes);
-    // ignore: avoid_print
-    print('[tree] initState visible=' + visibleNodes.length.toString());
+    Log.debug('tree', 'initState visible=${visibleNodes.length}');
     return ArxmlTreeState(
         rootNodes: rootNodes,
         visibleNodes: UnmodifiableListView(visibleNodes),
@@ -141,12 +152,21 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     cmd.apply();
     _undoStack.add(cmd);
     _redoStack.clear();
+    // Callers follow with copyWith() or _rebuildFlatMap(), both of which carry
+    // these flags forward.
+    _syncHistoryFlags();
   }
 
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
 
   bool _isStructural(ArxmlEditCommand cmd) => cmd.isStructural();
+
+  /// Republish the command-stack flags onto the state so watchers rebuild.
+  void _syncHistoryFlags() {
+    if (state.canUndo == canUndo && state.canRedo == canRedo) return;
+    state = state.copyWith(canUndo: canUndo, canRedo: canRedo);
+  }
 
   void undo() {
     if (_undoStack.isEmpty) return;
@@ -158,6 +178,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     } else {
       state = state.copyWith();
     }
+    _syncHistoryFlags();
   }
 
   void redo() {
@@ -170,6 +191,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     } else {
       state = state.copyWith();
     }
+    _syncHistoryFlags();
   }
 
   // Modified editing operations to use commands
@@ -348,6 +370,8 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       contextMenuNodeId: state.contextMenuNodeId,
       selectedNodeId: sel,
       pendingCenterNodeId: state.pendingCenterNodeId,
+      canUndo: canUndo,
+      canRedo: canRedo,
     );
   }
 
@@ -384,8 +408,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
 
   // Convenience: collapse all nodes so only roots are visible
   void collapseAll() {
-    // ignore: avoid_print
-    print('[tree] collapseAll');
+    Log.debug('tree', 'collapseAll');
     void walk(ElementNode n) {
       if (n.children.isNotEmpty) {
         // Collapse this node and all descendants
@@ -410,8 +433,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
 
   // Convenience: expand all nodes so all are visible
   void expandAll() {
-    // ignore: avoid_print
-    print('[tree] expandAll');
+    Log.debug('tree', 'expandAll');
     void walk(ElementNode n) {
       if (n.children.isNotEmpty) {
         n.isCollapsed = false;

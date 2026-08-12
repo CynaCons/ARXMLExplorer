@@ -1,5 +1,7 @@
 import 'package:xml/xml.dart';
 
+import '../../diagnostics/log.dart';
+
 class XsdParser {
   final XmlDocument document;
   final bool verbose;
@@ -59,10 +61,10 @@ class XsdParser {
         _extractChildElementsWithTimeoutAndVisited(
             parentElementDef, validChildElements, visited);
         _v('Collected ${validChildElements.toSet().length} candidates for "$cacheKey"');
-      } catch (e) {
-        if (verbose) {
-          print('XSD: Could not extract children for $cacheKey: $e');
-        }
+      } catch (e, st) {
+        Log.verbose(verbose, 'xsd',
+            'Could not extract children for $cacheKey: $e');
+        if (!verbose) Log.warn('xsd', 'child extraction failed for $cacheKey', e, st);
       }
     }
     final result = validChildElements.toSet().toList();
@@ -760,7 +762,7 @@ class XsdParser {
         _traceBuffer = _traceBuffer.sublist(_traceBuffer.length - 4000);
       }
       _traceBuffer = [..._traceBuffer, message];
-      print('XSD: $message');
+      Log.debug('xsd', message);
     }
   }
 

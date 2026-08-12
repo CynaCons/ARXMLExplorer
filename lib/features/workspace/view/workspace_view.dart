@@ -6,7 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart' as fp;
 import '../workspace.dart'; // For WorkspaceIndexNotifier
 import 'package:arxml_explorer/features/workspace/service/workspace_models.dart';
-import 'package:arxml_explorer/ui/home_shell.dart' show navRailIndexProvider;
+import 'package:arxml_explorer/app_providers.dart' show navRailIndexProvider;
 
 class WorkspaceView extends ConsumerStatefulWidget {
   final void Function(String filePath) onOpenFile;
@@ -194,13 +194,7 @@ class _WorkspaceViewState extends ConsumerState<WorkspaceView> {
                         fileStatus: workspaceIndex.fileStatus,
                         onOpenFile: (path) {
                           widget.onOpenFile(path);
-                          try {
-                            final container = ProviderScope.containerOf(context,
-                                listen: false);
-                            container
-                                .read(navRailIndexProvider.notifier)
-                                .state = 0;
-                          } catch (_) {}
+                          ref.read(navRailIndexProvider.notifier).state = 0;
                         },
                       ),
               ),

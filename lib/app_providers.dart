@@ -1,5 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:arxml_explorer/core/cache/ast_cache.dart';
 import 'package:arxml_explorer/core/validation/issues.dart';
+
+// Parsed-AST cache, shared across tabs so reopening a file is cheap.
+// The cache itself is pure Dart in core/; only this binding is Riverpod.
+final astCacheProvider =
+    Provider<AstLruCache>((ref) => AstLruCache(capacity: 8));
 
 // Live validation toggle (off by default)
 final liveValidationProvider = StateProvider<bool>((ref) => false);
@@ -31,3 +37,7 @@ final severityFiltersProvider =
 
 // Currently selected issue index in Validation view
 final selectedIssueIndexProvider = StateProvider<int?>((ref) => null);
+
+// Active shell navigation index (0 = Editor)
+final navRailIndexProvider = StateProvider<int>((ref) => 0);
+

@@ -8,8 +8,10 @@ import 'package:arxml_explorer/core/core.dart';
 import 'package:arxml_explorer/core/models/element_node.dart';
 import 'dart:async';
 import 'dart:io';
-import 'dart:developer' show log;
 import 'package:file_picker/file_picker.dart' as fp;
+import 'package:path/path.dart' as p;
+import 'package:arxml_explorer/core/diagnostics/log.dart';
+import 'package:arxml_explorer/core/resources/resource_locator.dart';
 import 'package:arxml_explorer/features/xsd/state/xsd_catalog.dart';
 
 // Removed obsolete placeholder comment after migration.
@@ -20,6 +22,13 @@ final fileTabsProvider =
 });
 
 final loadingStateProvider = StateProvider<bool>((ref) => false);
+
+/// Whether opening a file should detect and parse its XSD automatically.
+///
+/// On by default. An AUTOSAR schema is ~9 MB and parsing it costs seconds on
+/// the main isolate, so tests that only exercise tree/editing behaviour turn
+/// this off rather than paying for it on every fixture open.
+final autoAttachSchemaProvider = StateProvider<bool>((ref) => true);
 final diagnosticsProvider = StateProvider<bool>((ref) => false);
 final activeTabIndexProvider = StateProvider<int>((ref) => 0);
 // Added: UI scroll request for navigation (index in visible list)
@@ -68,16 +77,66 @@ class ValidationScheduler extends StateNotifier<int> {
 class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
   final Ref _ref;
   FileTabsNotifier(this._ref) : super([]);
+
+  void _switchToEditorView() {
+    _ref.read(navRailIndexProvider.notifier).state = 0;
+  }
+
   final ARXMLFileLoader _arxmlLoader = const ARXMLFileLoader();
   XsdParser? _currentXsdParser;
   String? _currentXsdPath;
   // Cache for detection per file content hash/path
   final Map<String, (String path, String source)> _detectionCache = {};
 
+  /// Last user-facing failure, surfaced by the shell instead of being swallowed.
+  String? lastError;
+
+  /// Completes when the schema for the most recently opened tab has been
+  /// detected and parsed. Tests await this when they need validation ready;
+  /// the UI does not, so a tab opens without waiting on a 9 MB XSD parse.
+  Future<void>? schemaWarmup;
+
+  /// Detects, loads and attaches the schema for an already-open tab.
+  Future<void> _attachSchemaForTab(String filePath, String fileContent) async {
+    if (!_ref.read(autoAttachSchemaProvider)) {
+      Log.debug('xsd', 'auto-attach disabled; skipping schema for $filePath');
+      return;
+    }
+    try {
+      await _loadXsdSchema();
+      final detected = await _detectSchemaPathFromArxml(fileContent);
+      XsdParser? parser = _currentXsdParser;
+      String? xsdPath = _currentXsdPath;
+      if (detected != null) {
+        try {
+          final content = await File(detected).readAsString();
+          parser = XsdParser(content, verbose: _ref.read(diagnosticsProvider));
+          xsdPath = detected;
+        } catch (e, st) {
+          Log.warn('xsd', 'Failed to read detected schema $detected', e, st);
+        }
+      }
+      if (!mounted) return; // notifier disposed while we were parsing
+      final index = state.indexWhere((t) => t.path == filePath);
+      if (index == -1) return; // tab closed while we were parsing
+      final updated = [...state];
+      updated[index] = updated[index].copyWith(
+        xsdParser: parser,
+        xsdPath: xsdPath,
+        xsdSource: xsdPath == null
+            ? null
+            : _detectionCache[fileContent.hashCode.toString()]?.$2,
+      );
+      state = updated;
+      Log.debug('xsd', 'schema attached to $filePath: ${xsdPath ?? "none"}');
+    } catch (e, st) {
+      Log.warn('xsd', 'schema attach failed for $filePath', e, st);
+    }
+  }
+
   @override
   set state(List<FileTabState> value) {
-    // ignore: avoid_print
-    print('[tabs] state set ${super.state.length} -> ${value.length}');
+    Log.debug('tabs', 'state ${super.state.length} -> ${value.length}');
     super.state = value;
   }
 
@@ -129,17 +188,28 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     return (pairs: pairs, noNsHref: noNsHref, version: version);
   }
 
+  /// Default schema name used when an ARXML gives no usable hint.
+  static const String _defaultSchemaName = 'AUTOSAR_00050.xsd';
+
   Future<void> _loadXsdSchema() async {
     if (_currentXsdParser != null) return;
+    final resolved = resourceLocator.resolveXsd(_defaultSchemaName);
+    if (resolved == null) {
+      Log.warn(
+        'xsd',
+        'Default schema $_defaultSchemaName not found. Searched: '
+            '${resourceLocator.xsdSearchPaths().join(", ")}',
+      );
+      return;
+    }
     try {
-      final xsdFile = File('lib/res/xsd/AUTOSAR_00050.xsd');
-      if (await xsdFile.exists()) {
-        _currentXsdPath = xsdFile.path;
-        final xsdContent = await xsdFile.readAsString();
-        final verbose = _ref.read(diagnosticsProvider);
-        _currentXsdParser = XsdParser(xsdContent, verbose: verbose);
-      }
-    } catch (_) {}
+      _currentXsdPath = resolved;
+      final xsdContent = await File(resolved).readAsString();
+      final verbose = _ref.read(diagnosticsProvider);
+      _currentXsdParser = XsdParser(xsdContent, verbose: verbose);
+    } catch (e, st) {
+      Log.warn('xsd', 'Failed to load default schema $resolved', e, st);
+    }
   }
 
   Future<void> toggleDiagnostics() async {
@@ -153,7 +223,10 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       try {
         final content = await File(_currentXsdPath!).readAsString();
         _currentXsdParser = XsdParser(content, verbose: verbose);
-      } catch (_) {}
+      } catch (e, st) {
+        Log.warn('xsd', 'Failed to reload session schema $_currentXsdPath',
+            e, st);
+      }
     }
     final updated = <FileTabState>[];
     for (final tab in state) {
@@ -162,7 +235,9 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         try {
           final content = await File(tab.xsdPath!).readAsString();
           parser = XsdParser(content, verbose: verbose);
-        } catch (_) {}
+        } catch (e, st) {
+          Log.warn('xsd', 'Failed to reload tab schema ${tab.xsdPath}', e, st);
+        }
       } else {
         parser = _currentXsdParser;
       }
@@ -186,34 +261,38 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     // Parse header hints
     final parsed = _parseSchemaHeader(content);
     final diag = _ref.read(diagnosticsProvider);
-    if (diag) {
-      log('[xsd-detect] header pairs=${parsed.pairs.length} noNs=${parsed.noNsHref ?? '-'} ver=${parsed.version ?? '-'}');
-    }
+    Log.verbose(
+        diag,
+        'xsd-detect',
+        'header pairs=${parsed.pairs.length} '
+            'noNs=${parsed.noNsHref ?? '-'} ver=${parsed.version ?? '-'}');
 
-    // Helper to try candidates with strict ordering
-    Future<(String path, String source)?> _resolveOrdered(
+    // Strict fallback ordering, documented in PLAN v0.2.7:
+    //   catalog basename -> direct path -> bundled -> workspace -> default.
+    Future<(String path, String source)?> resolveOrdered(
         List<String> basenames) async {
       // 1) Catalog by basename
       final cat = _ref.read(xsdCatalogProvider.notifier).findAny(basenames);
       if (cat != null) {
-        if (diag) log('[xsd-detect] match catalog by basename: $cat');
+        Log.verbose(diag, 'xsd-detect', 'match catalog by basename: $cat');
         return (cat, 'catalog:basename');
       }
-      // 2) Direct file paths
+      // 2) Direct file paths as written in the header
       for (final c in basenames) {
         try {
           if (await File(c).exists()) {
-            if (diag) log('[xsd-detect] match direct path: $c');
+            Log.verbose(diag, 'xsd-detect', 'match direct path: $c');
             return (c, 'direct');
           }
-        } catch (_) {}
+        } catch (e) {
+          Log.verbose(diag, 'xsd-detect', 'direct path check failed for $c: $e');
+        }
       }
-      // 3) Bundled res by basename
+      // 3) Bundled schema directories (locator-resolved, not cwd-relative)
       for (final c in basenames) {
-        final base = c.split(RegExp(r'[\\\/]')).last;
-        final bundled = 'lib/res/xsd/' + base;
-        if (await File(bundled).exists()) {
-          if (diag) log('[xsd-detect] match bundled: $bundled');
+        final bundled = resourceLocator.resolveXsd(p.basename(c));
+        if (bundled != null) {
+          Log.verbose(diag, 'xsd-detect', 'match bundled: $bundled');
           return (bundled, 'bundled');
         }
       }
@@ -222,7 +301,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       if (wsRoot != null) {
         final hit = await _findInWorkspace(wsRoot, basenames);
         if (hit != null) {
-          if (diag) log('[xsd-detect] match workspace: $hit');
+          Log.verbose(diag, 'xsd-detect', 'match workspace: $hit');
           return (hit, 'workspace');
         }
       }
@@ -232,21 +311,24 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     // 1) schemaLocation namespace pairs
     if (parsed.pairs.isNotEmpty) {
       final urls = parsed.pairs.map((e) => e.$2).toList(growable: false);
-      final resolved = await _resolveOrdered(urls);
+      final resolved = await resolveOrdered(urls);
       if (resolved != null) {
         _detectionCache[key] = resolved;
-        if (diag)
-          log('[xsd-detect] resolved from schemaLocation -> ${resolved.$2} :: ${resolved.$1}');
+        Log.verbose(diag, 'xsd-detect',
+            'resolved from schemaLocation -> ${resolved.$2} :: ${resolved.$1}');
         return resolved.$1;
       }
     }
     // 2) noNamespaceSchemaLocation
     if (parsed.noNsHref != null) {
-      final resolved = await _resolveOrdered([parsed.noNsHref!]);
+      final resolved = await resolveOrdered([parsed.noNsHref!]);
       if (resolved != null) {
         _detectionCache[key] = resolved;
-        if (diag)
-          log('[xsd-detect] resolved from noNamespaceSchemaLocation -> ${resolved.$2} :: ${resolved.$1}');
+        Log.verbose(
+            diag,
+            'xsd-detect',
+            'resolved from noNamespaceSchemaLocation -> '
+                '${resolved.$2} :: ${resolved.$1}');
         return resolved.$1;
       }
     }
@@ -257,80 +339,117 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       final exact = catalogNotifier.findByVersion(normalized);
       if (exact != null) {
         _detectionCache[key] = (exact, 'catalog:version');
-        if (diag)
-          log('[xsd-detect] resolved by exact version: $normalized -> $exact');
+        Log.verbose(diag, 'xsd-detect',
+            'resolved by exact version: $normalized -> $exact');
         return exact;
       }
       final nearest = catalogNotifier.findNearestVersion(normalized);
       if (nearest != null) {
         _detectionCache[key] = (nearest, 'catalog:nearest');
-        if (diag)
-          log('[xsd-detect] resolved by nearest version: $normalized -> $nearest');
+        Log.verbose(diag, 'xsd-detect',
+            'resolved by nearest version: $normalized -> $nearest');
         return nearest;
       }
       // If still not found, try common filename variants
       final variants = <String>[
         'AUTOSAR_$verRaw.xsd',
-        'AUTOSAR_${normalized}.xsd',
+        'AUTOSAR_$normalized.xsd',
         'AUTOSAR_${verRaw.replaceAll('.', '-')}.xsd',
       ];
-      final viaNames = await _resolveOrdered(variants);
+      final viaNames = await resolveOrdered(variants);
       if (viaNames != null) {
         _detectionCache[key] = viaNames;
-        if (diag)
-          log('[xsd-detect] resolved via filename variants -> ${viaNames.$2} :: ${viaNames.$1}');
+        Log.verbose(
+            diag,
+            'xsd-detect',
+            'resolved via filename variants -> '
+                '${viaNames.$2} :: ${viaNames.$1}');
         return viaNames.$1;
       }
     }
-    // 4) Hard fallback
-    final fallback = 'lib/res/xsd/AUTOSAR_00050.xsd';
-    if (await File(fallback).exists()) {
+    // 5) Hard fallback: the newest bundled schema, wherever it lives.
+    final fallback = resourceLocator.resolveXsd(_defaultSchemaName);
+    if (fallback != null) {
       _detectionCache[key] = (fallback, 'fallback');
-      if (diag) log('[xsd-detect] using fallback: $fallback');
+      Log.verbose(diag, 'xsd-detect', 'using fallback: $fallback');
       return fallback;
     }
+    Log.warn(
+      'xsd-detect',
+      'No schema resolved and no bundled fallback found. Searched: '
+          '${resourceLocator.xsdSearchPaths().join(", ")}',
+    );
     return null;
   }
 
   Future<String?> _findInWorkspace(
       String rootDir, List<String> basenames) async {
+    // Compare on basename so a header naming `schema/AUTOSAR_00050.xsd` still
+    // matches, and so the split works on either path separator.
+    final wanted = basenames.map(p.basename).toSet();
     try {
       final dir = Directory(rootDir);
       await for (final ent in dir.list(recursive: true, followLinks: false)) {
-        if (ent is File) {
-          final name = ent.path.split(Platform.pathSeparator).last;
-          if (basenames.contains(name)) return ent.path;
+        if (ent is File && wanted.contains(p.basename(ent.path))) {
+          return ent.path;
         }
       }
-    } catch (_) {}
+    } on FileSystemException catch (e) {
+      Log.warn('xsd-detect', 'workspace scan of $rootDir failed: $e');
+    }
     return null;
   }
 
-  Future<void> pickXsdForActiveTab() async {
+  /// Schemas offered to the user for the active tab, best match first.
+  ///
+  /// Exposed so the UI can present a real chooser; `pickXsdForActiveTab`
+  /// previously just took `catalog.byBasename.values.first`.
+  Future<List<String>> schemaChoicesForActiveTab() async {
+    final catalog = _ref.read(xsdCatalogProvider);
+    final choices = catalog.byBasename.values.toSet().toList()..sort();
+    final suggested = await suggestedSchemaForActiveTab();
+    if (suggested != null) {
+      choices
+        ..remove(suggested)
+        ..insert(0, suggested);
+    }
+    return choices;
+  }
+
+  /// Best-guess schema for the active tab, from its own header.
+  Future<String?> suggestedSchemaForActiveTab() async {
+    final activeIndex = _ref.read(activeTabIndexProvider);
+    if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) {
+      return null;
+    }
+    try {
+      final content = await File(state[activeIndex].path).readAsString();
+      return await _detectSchemaPathFromArxml(content);
+    } catch (e) {
+      Log.warn('xsd', 'Could not read active file for schema suggestion: $e');
+      return null;
+    }
+  }
+
+  /// Applies a schema to the active tab.
+  ///
+  /// [chooser] lets the UI present the catalog; when omitted (or when it
+  /// returns null) this falls back to the platform file picker.
+  Future<void> pickXsdForActiveTab({
+    Future<String?> Function(List<String> choices)? chooser,
+  }) async {
     final activeIndex = _ref.read(activeTabIndexProvider);
     if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) return;
-    // Prefer choosing from discovered catalog entries
     final catalog = _ref.read(xsdCatalogProvider);
     String? filePath;
-    if (catalog.byBasename.isNotEmpty) {
-      // Pick the first entry for now; UI dialog selection can be added later.
-      // Prefer normalized version match to active file if possible.
-      final active = state[activeIndex];
-      try {
-        final content = await File(active.path).readAsString();
-        final versionMatch =
-            RegExp(r'AUTOSAR[^>]*version\s*=\s*"([^"]+)"').firstMatch(content);
-        if (versionMatch != null) {
-          final ver = versionMatch.group(1)!.replaceAll('-', '.');
-          final byVersion =
-              _ref.read(xsdCatalogProvider.notifier).findByVersion(ver);
-          filePath = byVersion ?? catalog.byBasename.values.first;
-        } else {
-          filePath = catalog.byBasename.values.first;
-        }
-      } catch (_) {
-        filePath = catalog.byBasename.values.first;
-      }
+    if (catalog.byBasename.isNotEmpty && chooser != null) {
+      filePath = await chooser(await schemaChoicesForActiveTab());
+      if (filePath == null) return; // user dismissed the chooser
+    } else if (catalog.byBasename.isNotEmpty) {
+      // No chooser supplied (tests, headless): use the best automatic match.
+      final choices = await schemaChoicesForActiveTab();
+      filePath = await suggestedSchemaForActiveTab() ??
+          (choices.isEmpty ? null : choices.first);
     } else {
       // Fallback to manual file picker
       fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
@@ -355,6 +474,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     final activeIndex = _ref.read(activeTabIndexProvider);
     if (state.isEmpty || activeIndex < 0 || activeIndex >= state.length) return;
     try {
+      lastError = null;
       final content = await File(filePath).readAsString();
       final verbose = _ref.read(diagnosticsProvider);
       final parser = XsdParser(content, verbose: verbose);
@@ -368,71 +488,61 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         xsdSource: 'manual',
       );
       state = updated;
-    } catch (_) {}
+    } catch (e, st) {
+      lastError = 'Could not load schema $filePath: $e';
+      Log.error('xsd', 'applyXsdToActiveTab failed for $filePath', e, st);
+    }
   }
 
-  Future<void> openNewFile() async {
+  /// Opens a file.
+  ///
+  /// [path] bypasses the picker; tests pass a fixture here. Production callers
+  /// omit it and always get the platform file dialog. (This used to silently
+  /// prefer `test/res/generic_ecu.arxml` whenever that path existed, which meant
+  /// Open File never prompted when the app ran from the repo root.)
+  Future<void> openNewFile({String? path}) async {
+    lastError = null;
     try {
-      // ignore: avoid_print
-      print('[tabs] openNewFile start');
+      Log.debug('tabs', 'openNewFile start');
       _ref.read(loadingStateProvider.notifier).state = true;
-      await _loadXsdSchema();
-      String? pickedPath;
-      // Prefer a bundled sample file if available (useful in tests/CI)
-      final samplePath = 'test/res/generic_ecu.arxml';
-      if (await File(samplePath).exists()) {
-        pickedPath = samplePath;
-        // ignore: avoid_print
-        print('[tabs] using sample file: ' + pickedPath);
-      } else {
+      String? pickedPath = path;
+      if (pickedPath == null) {
         fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
           type: fp.FileType.custom,
           allowedExtensions: ['arxml', 'xml'],
         );
         if (result != null && result.files.single.path != null) {
           pickedPath = result.files.single.path!;
-          // ignore: avoid_print
-          print('[tabs] picked file: ' + pickedPath);
         }
       }
-      if (pickedPath != null) {
+      if (pickedPath == null) {
+        Log.debug('tabs', 'openNewFile cancelled');
+      } else {
         final filePath = pickedPath;
         final cache = _ref.read(astCacheProvider);
         List<ElementNode>? nodes = cache.get(filePath);
         String fileContent;
         if (nodes == null) {
           fileContent = await File(filePath).readAsString();
-          // ignore: avoid_print
-          print('[tabs] read file content, length=' +
-              fileContent.length.toString());
-          final detectedSchema = await _detectSchemaPathFromArxml(fileContent);
-          XsdParser? xsdForTab = _currentXsdParser;
-          String? xsdPath = _currentXsdPath;
-          if (detectedSchema != null) {
-            try {
-              final content = await File(detectedSchema).readAsString();
-              xsdForTab =
-                  XsdParser(content, verbose: _ref.read(diagnosticsProvider));
-              xsdPath = detectedSchema;
-            } catch (_) {}
-          }
+          Log.debug('tabs', 'read $filePath (${fileContent.length} chars)');
           nodes = _arxmlLoader.parseXmlContent(fileContent);
-          // ignore: avoid_print
-          print('[tabs] parsed nodes: ' + nodes.length.toString());
+          Log.debug('tabs', 'parsed ${nodes.length} root nodes');
           cache.put(filePath, nodes);
           final newTab = FileTabState(
             path: filePath,
             treeStateProvider: arxmlTreeStateProvider(nodes),
-            xsdParser: xsdForTab,
-            xsdPath: xsdPath,
-            xsdSource: xsdPath == null
-                ? null
-                : _detectionCache[fileContent.hashCode.toString()]?.$2,
+            xsdParser: _currentXsdParser,
+            xsdPath: _currentXsdPath,
           );
           state = [...state, newTab];
           _ref.read(activeTabIndexProvider.notifier).state = state.length - 1;
-          // ignore: avoid_print
-          print('[tabs] tab added, total tabs=' + state.length.toString());
+          _switchToEditorView();
+          Log.debug('tabs', 'tab added, total=${state.length}');
+          // Schema attachment is deferred: an AUTOSAR XSD is ~9 MB and parsing
+          // it took multiple seconds *before* the tab appeared, so Open File
+          // froze the UI. The tree is usable immediately; validation lights up
+          // when the schema lands. Await `schemaWarmup` for determinism.
+          schemaWarmup = _attachSchemaForTab(filePath, fileContent);
         } else {
           final newTab = FileTabState(
             path: filePath,
@@ -442,16 +552,18 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
           );
           state = [...state, newTab];
           _ref.read(activeTabIndexProvider.notifier).state = state.length - 1;
-          // ignore: avoid_print
-          print('[tabs] tab added from cache, total tabs=' +
-              state.length.toString());
+          _switchToEditorView();
+          Log.debug('tabs', 'tab added from cache, total=${state.length}');
         }
       }
-    } catch (_) {
+    } catch (e, st) {
+      // Previously swallowed: a failed read or parse produced no tab and no
+      // message, which read to the user as "Open File does nothing".
+      lastError = 'Could not open file: $e';
+      Log.error('tabs', 'openNewFile failed', e, st);
     } finally {
       _ref.read(loadingStateProvider.notifier).state = false;
-      // ignore: avoid_print
-      print('[tabs] openNewFile end');
+      Log.debug('tabs', 'openNewFile end');
     }
   }
 
@@ -489,38 +601,76 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       );
       state = [...state, newTab];
       _ref.read(activeTabIndexProvider.notifier).state = state.length - 1;
+      _switchToEditorView();
     }
   }
 
+  /// The active tab, resolved without going through [activeTabProvider].
+  ///
+  /// `activeTabProvider` watches `fileTabsProvider`, so reading it from inside
+  /// this notifier is a cycle and Riverpod throws `CircularDependencyError`.
+  /// That went unnoticed while Save had no UI to invoke it.
+  FileTabState? get _activeTab {
+    final index = _ref.read(activeTabIndexProvider);
+    if (index < 0 || index >= state.length) return null;
+    return state[index];
+  }
+
   Future<void> saveActiveFile() async {
-    final activeTab = _ref.read(activeTabProvider);
+    final activeTab = _activeTab;
     if (activeTab == null) return;
-    final treeState = _ref.read(activeTab.treeStateProvider);
-    final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
-    await File(activeTab.path).writeAsString(xmlString);
-    // Invalidate detection cache on save (content changed)
-    _detectionCache.clear();
-    final idx = state.indexWhere((t) => t.path == activeTab.path);
-    if (idx != -1) {
-      final updated = List<FileTabState>.from(state);
-      updated[idx] = updated[idx].copyWith(isDirty: false);
-      state = updated;
+    try {
+      lastError = null;
+      final treeState = _ref.read(activeTab.treeStateProvider);
+      final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
+      await File(activeTab.path).writeAsString(xmlString);
+      // Invalidate detection cache on save (content changed)
+      _detectionCache.clear();
+      final idx = state.indexWhere((t) => t.path == activeTab.path);
+      if (idx != -1) {
+        final updated = List<FileTabState>.from(state);
+        updated[idx] = updated[idx].copyWith(isDirty: false);
+        state = updated;
+      }
+      Log.debug('tabs', 'saved ${activeTab.path}');
+    } catch (e, st) {
+      lastError = 'Could not save ${activeTab.path}: $e';
+      Log.error('tabs', 'saveActiveFile failed', e, st);
     }
   }
 
   Future<void> saveAllFiles() async {
+    lastError = null;
+    final failures = <String>[];
     for (var i = 0; i < state.length; i++) {
       final tab = state[i];
-      final treeState = _ref.read(tab.treeStateProvider);
-      final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
-      await File(tab.path).writeAsString(xmlString);
+      try {
+        final treeState = _ref.read(tab.treeStateProvider);
+        final xmlString = _arxmlLoader.toXmlString(treeState.rootNodes);
+        await File(tab.path).writeAsString(xmlString);
+      } catch (e, st) {
+        failures.add(p.basename(tab.path));
+        Log.error('tabs', 'saveAllFiles failed for ${tab.path}', e, st);
+      }
     }
     // Invalidate detection cache on bulk save
     _detectionCache.clear();
-    state = [for (final t in state) t.copyWith(isDirty: false)];
+    // Only clear the dirty flag on files that actually made it to disk.
+    state = [
+      for (final t in state)
+        failures.contains(p.basename(t.path)) ? t : t.copyWith(isDirty: false)
+    ];
+    if (failures.isNotEmpty) {
+      lastError = 'Could not save: ${failures.join(", ")}';
+    }
   }
 
   void closeFile(int index) {
+    if (index < 0 || index >= state.length) return;
+    // Release the tab's tree state. arxmlTreeStateProvider is an autoDispose
+    // family that calls ref.keepAlive(), so without this the parsed AST — which
+    // is also the family key — is retained for the life of the process.
+    _ref.invalidate(state[index].treeStateProvider);
     final newTabs = List.of(state)..removeAt(index);
     if (newTabs.isEmpty) {
       _ref.read(activeTabIndexProvider.notifier).state = 0;
@@ -538,11 +688,11 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
     if (existingIndex != -1) {
       _ref.read(activeTabIndexProvider.notifier).state = existingIndex;
       _navigateToShortPath(state[existingIndex], shortNamePath);
+      _switchToEditorView();
       return;
     }
     try {
       _ref.read(loadingStateProvider.notifier).state = true;
-      await _loadXsdSchema();
       final cache = _ref.read(astCacheProvider);
       List<ElementNode>? nodes = cache.get(filePath);
       String? content;
@@ -551,32 +701,24 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
         nodes = _arxmlLoader.parseXmlContent(content);
         cache.put(filePath, nodes);
       }
-      XsdParser? xsdForTab = _currentXsdParser;
-      String? xsdPath = _currentXsdPath;
-      final detectedSchema =
-          content != null ? await _detectSchemaPathFromArxml(content) : null;
-      if (detectedSchema != null) {
-        try {
-          final xsdContent = await File(detectedSchema).readAsString();
-          xsdForTab =
-              XsdParser(xsdContent, verbose: _ref.read(diagnosticsProvider));
-          xsdPath = detectedSchema;
-        } catch (_) {}
-      }
       final tab = FileTabState(
         path: filePath,
         treeStateProvider: arxmlTreeStateProvider(nodes),
-        xsdParser: xsdForTab,
-        xsdPath: xsdPath,
-        xsdSource: xsdPath == null
-            ? null
-            : _detectionCache[(content ?? '').hashCode.toString()]?.$2,
+        xsdParser: _currentXsdParser,
+        xsdPath: _currentXsdPath,
       );
       state = [...state, tab];
       final idx = state.length - 1;
       _ref.read(activeTabIndexProvider.notifier).state = idx;
-      await Future.delayed(const Duration(milliseconds: 50));
+      _switchToEditorView();
       _navigateToShortPath(tab, shortNamePath);
+      // Same deferral as openNewFile: navigation must not wait on a 9 MB parse.
+      if (content != null) {
+        schemaWarmup = _attachSchemaForTab(filePath, content);
+      }
+    } catch (e, st) {
+      lastError = 'Could not open $filePath: $e';
+      Log.error('tabs', 'openFileAndNavigate failed', e, st);
     } finally {
       _ref.read(loadingStateProvider.notifier).state = false;
     }

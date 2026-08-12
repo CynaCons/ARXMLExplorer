@@ -17,8 +17,8 @@ Latest: Architecture refactoring in progress with core package extraction and co
 ### Development Status
 - Architecture: Layered design with core package separation
 - Core Features: File operations, editing, validation implemented
-- Testing: Comprehensive suite with integration tests (stabilization in progress)
-- Build: Analyzer-compliant
+- Testing: Widget + unit suite; run `flutter test` for the current status
+- Build: `flutter analyze` reports no errors or warnings (info-level lints remain)
 - Performance: Optimized for large files with bounded timeouts
 
 ## Setup & Installation
@@ -96,16 +96,19 @@ lib/
     workspace/
     validation/
     settings/
-  core/                        # Core business logic (being migrated)
+  core/                        # Pure Dart business logic (no Flutter imports)
     models/
     xml/
     xsd/
     validation/
     refs/
-packages/
-  arxml_core/                  # Extracted core package
-    lib/src/                   # Pure business logic
+    cache/
+    diagnostics/               # Log facade
+    resources/                 # ResourceLocator (schema discovery)
 ```
+
+`core/` is plain Dart: no `flutter`, no plugins, and no imports from
+`features/` or `ui/`. CI enforces this — see `.github/workflows/ci.yml`.
 
 ### Legacy Shims
 All legacy top-level shim files under `lib/` have been removed. Use the modular paths:
@@ -128,17 +131,17 @@ RULES.md                 # Dependency rules and coding standards
 
 ### Architecture Highlights
 - Layered Design: Presentation → Application → Core with strict dependency rules
-- Package Extraction: Reusable `arxml_core` package with pure business logic
 - Command Pattern: Structured editing with undo/redo support
 - Riverpod State: Reactive state management with provider composition
 - Performance: AST caching, incremental indexing, timeout optimization
 
 ### Recent Major Improvements
 - Modular Architecture: Feature-based organization with barrel exports
-- Core Package Split: Reusable `arxml_core` package with pure business logic
 - Enhanced Validation: Context-aware XSD validation with value node filtering
 - Test Stabilization: Timeout management and bounded pump patterns
 - UI Modernization: Navigation rail, tab management, live validation toggles
+- Save / Save All / Undo / Redo restored to the rail, with keyboard shortcuts
+- Schema discovery via `ResourceLocator` so installed builds find their XSDs
 
 ### Current Development Focus (PLAN.md)
 - UI Polish: Navigation rail redesign, AppBar consolidation
@@ -164,12 +167,24 @@ RULES.md                 # Dependency rules and coding standards
 See LICENSE file for details.
 
 ## Provisioning AUTOSAR XSDs
-Large AUTOSAR XSD files are not committed to the repository by default. Place the required schemas under `lib/res/xsd/`.
+Large AUTOSAR XSD files are not committed to the repository. The app searches
+these locations in order, first hit wins:
 
-Options:
-- Manual: Download XSDs from your licensed/autosar-compliant source and copy into `lib/res/xsd/`.
-- Git LFS (recommended for teams): Track XSDs via LFS to avoid bloating the repo history.
+1. `ARXML_XSD_DIR` environment variable — explicit override
+2. `<cwd>/lib/res/xsd` — source checkout
+3. `<executable dir>/data/flutter_assets/lib/res/xsd` — Flutter asset bundle
+4. `<executable dir>/res/xsd`, then `<executable dir>/../res/xsd`
+5. Per-user data directory:
+   - Windows: `%APPDATA%/ARXMLExplorer/xsd`
+   - Linux: `$XDG_DATA_HOME/arxml_explorer/xsd`, else `~/.local/share/arxml_explorer/xsd`
+   - macOS: `~/Library/Application Support/ARXMLExplorer/xsd`
+
+For development, copy your licensed schemas into `lib/res/xsd/`. For an
+installed build, use the per-user directory or set `ARXML_XSD_DIR`.
 
 Helper:
 - Run `dart run tool/verify_xsds.dart` to check presence and get guidance.
+
+Tests that need real AUTOSAR schemas skip themselves with a message when the
+schemas are absent, so `flutter test` is green on a bare checkout.
 

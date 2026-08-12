@@ -1,5 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:arxml_explorer/core/models/element_node.dart';
+import '../models/element_node.dart';
 
 class AstCacheEntry {
   final List<ElementNode> nodes;
@@ -44,5 +43,5 @@ class AstLruCache {
   List<String> get keys => List.unmodifiable(_lru);
 }
 
-final astCacheProvider =
-    Provider<AstLruCache>((ref) => AstLruCache(capacity: 8));
+// The Riverpod binding for this cache lives in lib/app_providers.dart
+// (astCacheProvider). Core stays free of the application layer per RULES.md.

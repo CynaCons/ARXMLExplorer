@@ -52,8 +52,6 @@ class EditorView extends ConsumerStatefulWidget {
 class _EditorViewState extends ConsumerState<EditorView> {
   @override
   Widget build(BuildContext context) {
-  // ignore: avoid_print
-  print('[editor] build');
     final tabs = ref.watch(fileTabsProvider);
     final activeTab = ref.watch(activeTabProvider);
     final diagnosticsOn = ref.watch(diagnosticsProvider);
@@ -124,8 +122,6 @@ class _EditorViewState extends ConsumerState<EditorView> {
                         notifier.clearPendingCenter();
                       });
                     }
-                    // ignore: avoid_print
-                    print('[editor] tab build visible=${treeState.visibleNodes.length}');
                     return FocusableActionDetector(
                       autofocus: true,
                       shortcuts: <LogicalKeySet, Intent>{
@@ -418,7 +414,9 @@ class _EditorResourceHudState extends ConsumerState<_EditorResourceHud> {
   }
 
   int _countNodes() {
-    final tree = ref.watch(widget.activeTab.treeStateProvider);
+    // ref.read, not ref.watch: this runs from a Timer outside build, where
+    // watching would register a dependency on every tick.
+    final tree = ref.read(widget.activeTab.treeStateProvider);
     int count = 0;
     void walk(ElementNode n) {
       count++;

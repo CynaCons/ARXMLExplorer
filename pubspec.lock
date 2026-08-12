@@ -41,13 +41,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.7.0"
-  arxml_core:
-    dependency: "direct main"
-    description:
-      path: "packages/arxml_core"
-      relative: true
-    source: path
-    version: "0.1.0"
   async:
     dependency: transitive
     description:

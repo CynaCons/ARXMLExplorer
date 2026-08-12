@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:arxml_explorer/core/resources/resource_locator.dart';
+
 class XsdCatalogState {
   final List<String> sources; // directories to scan (absolute)
   final Map<String, String> byBasename; // basename -> full path
@@ -36,23 +38,36 @@ class XsdCatalogState {
 class XsdCatalogNotifier extends StateNotifier<XsdCatalogState> {
   XsdCatalogNotifier() : super(const XsdCatalogState());
 
-  bool _isBundledPath(String path) {
-    try {
-      final norm = p.normalize(path).replaceAll('\\', '/');
-      return norm.contains('/lib/res/xsd/');
-    } catch (_) {
-      return false;
-    }
-  }
+  bool _isBundledPath(String path) => resourceLocator.isBundledPath(path);
 
-  Future<void> initialize({String bundledRes = 'lib/res/xsd'}) async {
-    final resDir = p.normalize(bundledRes);
-    // Load persisted sources (if any) in stable order, then ensure bundled res is appended last.
+  /// Load persisted sources, then append every bundled schema directory the
+  /// [ResourceLocator] can find.
+  ///
+  /// [bundledRes] overrides discovery entirely (tests point it at a fixture
+  /// directory); when omitted the locator decides, so the catalog populates
+  /// from an installed build as well as a source checkout.
+  Future<void> initialize({String? bundledRes}) async {
     final saved = await _loadSources();
     final sources = <String>[...saved];
-    if (!sources.contains(resDir)) {
-      sources.add(resDir);
+
+    void addSourceIfMissing(String dir) {
+      final norm = p.normalize(dir);
+      if (!sources.contains(norm)) sources.add(norm);
     }
+
+    if (bundledRes != null) {
+      addSourceIfMissing(bundledRes);
+    } else {
+      for (final dir in resourceLocator.xsdSearchPaths()) {
+        if (Directory(dir).existsSync()) addSourceIfMissing(dir);
+      }
+      // Nothing on disk yet: keep the checkout-relative path so a later rescan
+      // picks schemas up once they are provisioned.
+      if (sources.isEmpty) {
+        addSourceIfMissing(ResourceLocator.bundledXsdRelative);
+      }
+    }
+
     state = state.copyWith(sources: sources);
     await rescan();
   }
@@ -74,11 +89,38 @@ class XsdCatalogNotifier extends StateNotifier<XsdCatalogState> {
     await rescan();
   }
 
-  static String _normalizeVersionFromName(String name) {
-    // Extract 1-2-3 or 1.2.3 and normalize to 1.2.3
-    final m = RegExp(r'(\d+[.-]\d+[.-]\d+)').firstMatch(name);
-    if (m == null) return '';
-    return m.group(1)!.replaceAll('-', '.');
+  /// Version keys a schema file should be indexed under.
+  ///
+  /// AUTOSAR ships two naming schemes and the old single-regex version only
+  /// understood the first:
+  ///   * dotted/dashed releases — `AUTOSAR_4-3-0.xsd` -> `4.3.0`
+  ///   * numeric release ids    — `AUTOSAR_00050.xsd` -> `00050` and `50`
+  ///
+  /// Because `00050` has no separators it never matched `\d+[.-]\d+[.-]\d+`, so
+  /// the nine newest bundled schemas — including the hard fallback — were absent
+  /// from `byVersion` and `findByVersion`/`findNearestVersion` could never
+  /// resolve them.
+  static Set<String> _versionKeysFromName(String name) {
+    final keys = <String>{};
+
+    final dotted = RegExp(r'(\d+[.-]\d+[.-]\d+)').firstMatch(name);
+    if (dotted != null) keys.add(dotted.group(1)!.replaceAll('-', '.'));
+
+    final release = RegExp(r'_(\d{4,5})(?:\D|$)').firstMatch(name);
+    if (release != null) {
+      final raw = release.group(1)!;
+      keys.add(raw);
+      final trimmed = raw.replaceFirst(RegExp(r'^0+'), '');
+      if (trimmed.isNotEmpty) keys.add(trimmed);
+    }
+    return keys;
+  }
+
+  /// Normalize a version as written in an ARXML header into a catalog key.
+  static String normalizeVersionQuery(String version) {
+    final v = version.trim().replaceAll('-', '.');
+    // Numeric release ids may arrive zero-padded or not; index covers both.
+    return v;
   }
 
   Future<void> rescan() async {
@@ -110,8 +152,7 @@ class XsdCatalogNotifier extends StateNotifier<XsdCatalogState> {
                 byBase[base] = ent.path;
               }
             }
-            final ver = _normalizeVersionFromName(base);
-            if (ver.isNotEmpty) {
+            for (final ver in _versionKeysFromName(base)) {
               final existingVer = byVer[ver];
               if (existingVer == null) {
                 byVer[ver] = ent.path;
@@ -139,8 +180,32 @@ class XsdCatalogNotifier extends StateNotifier<XsdCatalogState> {
     );
   }
 
-  String? findByBasename(String base) => state.byBasename[base];
-  String? findByVersion(String version) => state.byVersion[version];
+  String? findByBasename(String base) {
+    final hit = state.byBasename[base];
+    if (hit != null) return hit;
+    // Linux filesystems are case-sensitive; ARXML headers are not consistent.
+    final lower = base.toLowerCase();
+    for (final entry in state.byBasename.entries) {
+      if (entry.key.toLowerCase() == lower) return entry.value;
+    }
+    return null;
+  }
+
+  String? findByVersion(String version) {
+    final key = normalizeVersionQuery(version);
+    final hit = state.byVersion[key];
+    if (hit != null) return hit;
+    // Numeric release ids: tolerate zero padding differences (50 <-> 00050).
+    if (RegExp(r'^\d+$').hasMatch(key)) {
+      final trimmed = key.replaceFirst(RegExp(r'^0+'), '');
+      for (final entry in state.byVersion.entries) {
+        if (entry.key.replaceFirst(RegExp(r'^0+'), '') == trimmed) {
+          return entry.value;
+        }
+      }
+    }
+    return null;
+  }
 
   /// Find the nearest version in the catalog, preferring same major.minor
   /// with the highest available patch. Returns null if no suitable version.
@@ -174,7 +239,7 @@ class XsdCatalogNotifier extends StateNotifier<XsdCatalogState> {
 
   String? findAny(List<String> basenames) {
     for (final b in basenames) {
-      final hit = state.byBasename[b];
+      final hit = findByBasename(p.basename(b));
       if (hit != null) return hit;
     }
     return null;

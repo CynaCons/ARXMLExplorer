@@ -18,6 +18,7 @@ class ElementNode {
     this.isValueNode = false,
   });
 
+  /// Total node count of the subtree rooted here, memoised.
   int get length {
     if (_lengthCache != null) return _lengthCache!;
     var total = 1;
@@ -28,5 +29,16 @@ class ElementNode {
     return total;
   }
 
-  void invalidateLength() => _lengthCache = null;
+  /// Drops the memoised subtree size for this node *and every ancestor*.
+  ///
+  /// Clearing only the node's own cache left every ancestor reporting a stale
+  /// count after an edit, because each parent's total was computed from the
+  /// child's pre-edit value.
+  void invalidateLength() {
+    ElementNode? node = this;
+    while (node != null) {
+      node._lengthCache = null;
+      node = node.parent;
+    }
+  }
 }
