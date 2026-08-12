@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 
+import 'support/xsd_fixtures.dart';
+
 void main() {
   group('AUTOSAR XSD - SWC Design', () {
     late XsdParser autosar;
@@ -49,5 +51,5 @@ void main() {
           autosar.getValidChildElements('APPLICATION-SW-COMPONENT-TYPE');
       expect(kids, contains('INTERNAL-BEHAVIORS'));
     });
-  });
+  }, skip: skipIfNoXsds);
 }

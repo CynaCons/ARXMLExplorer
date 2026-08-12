@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
 import 'package:arxml_explorer/features/xsd/state/xsd_catalog.dart';
 
+import 'support/xsd_fixtures.dart';
+
 void main() {
   group('XSD Detection — header parsing and selection', () {
     late ProviderContainer container;
@@ -60,5 +62,5 @@ void main() {
       // Should fall back to 4-3-0 if 4-3-1 not present in bundled catalog
       expect(path!.endsWith('AUTOSAR_4-3-0.xsd'), isTrue);
     });
-  });
+  }, skip: skipIfNoXsds);
 }

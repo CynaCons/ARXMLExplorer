@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:arxml_explorer/core/xsd/xsd_parser/parser.dart';
 
+import 'support/xsd_fixtures.dart';
+
 void main() {
   group('AUTOSAR XSD children (real schema)', () {
     late XsdParser autosar;
@@ -43,5 +45,5 @@ void main() {
       final kids = autosar.getValidChildElements('ELEMENTS');
       expect(kids, contains('APPLICATION-INTERFACE'));
     }, skip: true); // TODO: re-enable when contextual lookup is implemented
-  });
+  }, skip: skipIfNoXsds);
 }

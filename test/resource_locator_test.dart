@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 
 import 'package:arxml_explorer/core/resources/resource_locator.dart';
 
+import 'support/xsd_fixtures.dart';
+
 /// v0.4.2 — schema paths used to be bare `lib/res/xsd/...` strings resolved
 /// against the process working directory, so an installed build found nothing.
 void main() {
@@ -38,28 +40,18 @@ void main() {
     });
 
     test('resolves a schema from the checkout directory', () {
-      final dir = Directory(ResourceLocator.bundledXsdRelative);
-      if (!dir.existsSync()) {
-        markTestSkipped('AUTOSAR XSDs not provisioned; see README');
-        return;
-      }
       final resolved = const ResourceLocator().resolveXsd('AUTOSAR_00050.xsd');
       expect(resolved, isNotNull);
       expect(File(resolved!).existsSync(), isTrue);
-    });
+    }, skip: skipIfNoXsd('AUTOSAR_00050.xsd'));
 
     test('resolveXsd tolerates a full path and matches on basename', () {
-      final dir = Directory(ResourceLocator.bundledXsdRelative);
-      if (!dir.existsSync()) {
-        markTestSkipped('AUTOSAR XSDs not provisioned; see README');
-        return;
-      }
       const locator = ResourceLocator();
       final direct = locator.resolveXsd('AUTOSAR_00050.xsd');
       final viaPath =
           locator.resolveXsd('http/autosar.org/schema/AUTOSAR_00050.xsd');
       expect(viaPath, direct);
-    });
+    }, skip: skipIfNoXsd('AUTOSAR_00050.xsd'));
 
     test('resolveXsd returns null for an unknown schema', () {
       expect(const ResourceLocator().resolveXsd('DEFINITELY_NOT_HERE.xsd'),
@@ -67,11 +59,6 @@ void main() {
     });
 
     test('isBundledPath recognises schemas under a search path', () {
-      final dir = Directory(ResourceLocator.bundledXsdRelative);
-      if (!dir.existsSync()) {
-        markTestSkipped('AUTOSAR XSDs not provisioned; see README');
-        return;
-      }
       const locator = ResourceLocator();
       final resolved = locator.resolveXsd('AUTOSAR_00050.xsd')!;
 
@@ -80,14 +67,9 @@ void main() {
         locator.isBundledPath(p.join(Directory.systemTemp.path, 'other.xsd')),
         isFalse,
       );
-    });
+    }, skip: skipIfNoXsd('AUTOSAR_00050.xsd'));
 
     test('isBundledPath is separator-agnostic', () {
-      final dir = Directory(ResourceLocator.bundledXsdRelative);
-      if (!dir.existsSync()) {
-        markTestSkipped('AUTOSAR XSDs not provisioned; see README');
-        return;
-      }
       const locator = ResourceLocator();
       final resolved = locator.resolveXsd('AUTOSAR_00050.xsd')!;
 
@@ -95,6 +77,6 @@ void main() {
       // so a Windows-separated path reported false.
       expect(locator.isBundledPath(resolved.replaceAll('/', r'\')), isTrue);
       expect(locator.isBundledPath(resolved.replaceAll(r'\', '/')), isTrue);
-    });
+    }, skip: skipIfNoXsd('AUTOSAR_00050.xsd'));
   });
 }

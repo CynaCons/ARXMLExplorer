@@ -5,6 +5,8 @@ import 'package:arxml_explorer/features/xsd/state/xsd_catalog.dart';
 import 'package:arxml_explorer/features/editor/state/file_tabs_provider.dart';
 import 'package:arxml_explorer/core/core.dart';
 
+import 'support/xsd_fixtures.dart';
+
 void main() {
   group('XSD Catalog — additional', () {
     test('Discovers bundled res/xsd entries', () async {
@@ -47,5 +49,5 @@ void main() {
       final path = await tabs.detectSchemaForContent(xmlContent);
       expect(path != null && path!.endsWith('AUTOSAR_00050.xsd'), true);
     });
-  });
+  }, skip: skipIfNoXsds);
 }
