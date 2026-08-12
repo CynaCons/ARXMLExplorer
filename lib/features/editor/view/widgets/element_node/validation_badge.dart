@@ -44,12 +44,16 @@ class ValidationBadge extends ConsumerWidget {
             child: Text('${summary.count}',
                 style: TextStyle(color: color, fontWeight: FontWeight.w600)),
           ),
-        IconButton(
-          icon: const Icon(Icons.arrow_circle_down, size: 18),
-          tooltip: 'Go to issue',
-          visualDensity: VisualDensity.compact,
-          onPressed: () =>
+        // Plain tappable icon, not IconButton: IconButton's ink/focus/
+        // semantics machinery measured at 63 ms per scroll step per row.
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () =>
               ref.read(treeStateProvider.notifier).expandUntilNode(node.id),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: Icon(Icons.arrow_circle_down, size: 18),
+          ),
         ),
       ]),
     );

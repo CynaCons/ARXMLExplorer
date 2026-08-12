@@ -100,10 +100,17 @@ class RefIndicator extends ConsumerWidget {
 
     return Tooltip(
       message: refTooltip,
-      child: IconButton(
-        icon: Icon(showRefIndicator ? Icons.link : Icons.link_off,
-            color: showRefIndicator ? Colors.green : Colors.grey),
-        onPressed: showRefIndicator ? goToDef : null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: showRefIndicator ? goToDef : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Icon(
+            showRefIndicator ? Icons.link : Icons.link_off,
+            size: 18,
+            color: showRefIndicator ? Colors.green : Colors.grey,
+          ),
+        ),
       ),
     );
   }

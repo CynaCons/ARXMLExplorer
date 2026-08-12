@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:arxml_explorer/features/editor/view/widgets/tree/tree_scroll_controller.dart';
 
 import 'package:arxml_explorer/core/models/element_node.dart';
 import 'package:arxml_explorer/core/validation/issues.dart';
@@ -14,8 +14,8 @@ import 'package:arxml_explorer/app_providers.dart';
 import 'widgets/validation_gutter.dart';
 
 class ValidationView extends ConsumerWidget {
-  final ItemScrollController itemScrollController;
-  const ValidationView({super.key, required this.itemScrollController});
+  final TreeScrollController treeScrollController;
+  const ValidationView({super.key, required this.treeScrollController});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -194,10 +194,10 @@ class ValidationView extends ConsumerWidget {
                           final index = updated.visibleNodes
                               .indexWhere((n) => n.id == targetId);
                           if (index != -1) {
-                            itemScrollController.scrollTo(
-                              index: index,
+                            treeScrollController.scrollToIndex(
+                              index,
                               duration: const Duration(milliseconds: 400),
-                              curve: Curves.easeInOut,
+                              alignment: 0.35,
                             );
                             ref.read(navRailIndexProvider.notifier).state =
                                 0; // switch to editor

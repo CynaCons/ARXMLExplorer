@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/core/models/element_node.dart';
 import '../editor.dart'; // For ARXMLTreeViewState
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:arxml_explorer/features/editor/view/widgets/tree/tree_scroll_controller.dart';
 import 'package:flutter/services.dart';
 
 import 'package:arxml_explorer/features/editor/view/widgets/element_node/element_node_widget.dart';
@@ -37,13 +37,11 @@ class _NavIntent extends Intent {
 
 class EditorView extends ConsumerStatefulWidget {
   final TabController tabController;
-  final ItemScrollController itemScrollController;
-  final ItemPositionsListener itemPositionsListener;
+  final TreeScrollController treeScrollController;
   const EditorView(
       {super.key,
       required this.tabController,
-      required this.itemScrollController,
-      required this.itemPositionsListener});
+      required this.treeScrollController});
 
   @override
   ConsumerState<EditorView> createState() => _EditorViewState();
@@ -61,10 +59,9 @@ class _EditorViewState extends ConsumerState<EditorView> {
     if (pendingScrollIndex != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final smooth = ref.read(smoothScrollingProvider);
-        widget.itemScrollController.scrollTo(
-          index: pendingScrollIndex,
+        widget.treeScrollController.scrollToIndex(
+          pendingScrollIndex,
           duration: smooth ? const Duration(milliseconds: 400) : Duration.zero,
-          curve: Curves.easeInOut,
           alignment: 0.35,
         );
         ref.read(scrollToIndexProvider.notifier).state = null;
@@ -110,12 +107,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                             (n) => n.id == updated.pendingCenterNodeId);
                         if (idx != -1) {
                           final smooth = ref.read(smoothScrollingProvider);
-                          widget.itemScrollController.scrollTo(
-                            index: idx,
+                          widget.treeScrollController.scrollToIndex(
+                            idx,
                             duration: smooth
                                 ? const Duration(milliseconds: 400)
                                 : Duration.zero,
-                            curve: Curves.easeInOut,
                             alignment: 0.35,
                           );
                         }
@@ -161,12 +157,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.5,
                                   );
                                 });
@@ -179,12 +174,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.5,
                                   );
                                 });
@@ -197,12 +191,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.5,
                                   );
                                 });
@@ -215,12 +208,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.5,
                                   );
                                 });
@@ -233,12 +225,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.5,
                                   );
                                 });
@@ -251,12 +242,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.5,
                                   );
                                 });
@@ -269,12 +259,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.3,
                                   );
                                 });
@@ -287,12 +276,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.3,
                                   );
                                 });
@@ -307,12 +295,11 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 notifier.ensureSelectionVisible((idx) {
                                   final smooth =
                                       ref.read(smoothScrollingProvider);
-                                  widget.itemScrollController.scrollTo(
-                                    index: idx,
+                                  widget.treeScrollController.revealIndex(
+                                    idx,
                                     duration: smooth
                                         ? const Duration(milliseconds: 200)
                                         : Duration.zero,
-                                    curve: Curves.easeOut,
                                     alignment: 0.5,
                                   );
                                 });
@@ -333,27 +320,34 @@ class _EditorViewState extends ConsumerState<EditorView> {
                           },
                         ),
                       },
-                      // Not `.separated`: a Divider between every row doubled
-                      // the widget count for a purely cosmetic hairline. The
-                      // row draws its own bottom border instead.
-                      child: ScrollablePositionedList.builder(
-                        itemScrollController: widget.itemScrollController,
-                        itemPositionsListener: widget.itemPositionsListener,
-                        // Use visibleNodes so expanded children are shown, not just roots
-                        itemCount: treeState.visibleNodes.length,
-                        itemBuilder: (context, index) {
-                          final ElementNode node =
-                              treeState.visibleNodes[index];
-                          return ElementNodeWidget(
-                            // Keyed by node id so element and state are reused
-                            // across rebuilds instead of being torn down when
-                            // the visible window shifts.
-                            key: ValueKey<int>(node.id),
-                            node: node,
-                            xsdParser: tab.xsdParser,
-                            treeStateProvider: tab.treeStateProvider,
-                          );
-                        },
+                      // ListView + itemExtent, not ScrollablePositionedList:
+                      // uniform rows give an exact maxScrollExtent, so the
+                      // scrollbar works, scrolling is smooth, and jumping is
+                      // O(1) instead of 16.6 s on a 10k-row list.
+                      child: Scrollbar(
+                        controller:
+                            widget.treeScrollController.scrollController,
+                        thumbVisibility: true,
+                        child: ListView.builder(
+                          controller:
+                              widget.treeScrollController.scrollController,
+                          itemExtent: kRowHeight,
+                          // Use visibleNodes so expanded children are shown, not just roots
+                          itemCount: treeState.visibleNodes.length,
+                          itemBuilder: (context, index) {
+                            final ElementNode node =
+                                treeState.visibleNodes[index];
+                            return ElementNodeWidget(
+                              // Keyed by node id so element and state are reused
+                              // across rebuilds instead of being torn down when
+                              // the visible window shifts.
+                              key: ValueKey<int>(node.id),
+                              node: node,
+                              xsdParser: tab.xsdParser,
+                              treeStateProvider: tab.treeStateProvider,
+                            );
+                          },
+                        ),
                       ),
                     );
                   });

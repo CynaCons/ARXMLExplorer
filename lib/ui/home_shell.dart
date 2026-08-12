@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:arxml_explorer/features/editor/view/widgets/tree/tree_scroll_controller.dart';
 
 import 'package:arxml_explorer/app_providers.dart';
 import 'package:arxml_explorer/features/editor/state/arxml_tree_view_state.dart'
@@ -30,14 +30,12 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell>
     with SingleTickerProviderStateMixin {
   TabController? _tabController;
-  late final ItemScrollController itemScrollController;
-  late final ItemPositionsListener itemPositionsListener;
+  late final TreeScrollController treeScrollController;
 
   @override
   void initState() {
     super.initState();
-    itemScrollController = ItemScrollController();
-    itemPositionsListener = ItemPositionsListener.create();
+    treeScrollController = TreeScrollController();
     // Scan for schemas once at start-up rather than lazily on the first
     // detection, so the XSDs view and the schema chooser are populated before
     // the user opens anything.
@@ -49,6 +47,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
   @override
   void dispose() {
     _tabController?.dispose();
+    treeScrollController.dispose();
     super.dispose();
   }
 
@@ -366,7 +365,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
                   break;
                 case 2:
                   currentView = ValidationView(
-                      itemScrollController: itemScrollController);
+                      treeScrollController: treeScrollController);
                   break;
                 case 3:
                   currentView = const XsdCatalogView();
@@ -398,8 +397,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
                       : (activeTab != null && _tabController != null)
                           ? EditorView(
                               tabController: _tabController!,
-                              itemScrollController: itemScrollController,
-                              itemPositionsListener: itemPositionsListener,
+                              treeScrollController: treeScrollController,
                             )
                           : const Center(
                               child: Padding(

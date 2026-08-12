@@ -3,14 +3,14 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:arxml_explorer/features/editor/view/editor_view.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:arxml_explorer/features/editor/view/widgets/tree/tree_scroll_controller.dart';
 import 'package:arxml_explorer/app_providers.dart';
 
 void main() {
   testWidgets('ArrowDown moves selection and requests scroll', (tester) async {
     // Disable smooth scrolling for deterministic test
-    final itemScrollController = ItemScrollController();
-    final itemPositionsListener = ItemPositionsListener.create();
+    final treeScrollController = TreeScrollController();
+    addTearDown(treeScrollController.dispose);
     await tester.pumpWidget(ProviderScope(
       overrides: [
         smoothScrollingProvider.overrideWith((ref) => false),
@@ -20,8 +20,7 @@ void main() {
           body: Consumer(builder: (context, ref, _) {
             return EditorView(
               tabController: TabController(length: 0, vsync: const TestVSync()),
-              itemScrollController: itemScrollController,
-              itemPositionsListener: itemPositionsListener,
+              treeScrollController: treeScrollController,
             );
           }),
         ),

@@ -347,6 +347,46 @@
 - [x] Remove both rail dividers
 - [x] Update tests for the relocated actions and give them a desktop-sized surface
 
+## v0.7 — Scroll Correctness & Row Cost
+> Remove the list widget that froze the app, and cut per-row cost to make scrolling smooth.
+
+### v0.7.0 — Replace the list widget (COMPLETE)
+**Goal:** Scrolling and the scrollbar work on 50k-row documents.
+- [x] ROOT CAUSE of the crash: ScrollablePositionedList has no exact maxScrollExtent. Measured jump cost 445 ms at 1k, 16637 ms at 10k, never completed at 50k. Dragging the scrollbar issued a stream of those jumps and froze the app.
+- [x] Evidence: same test, ListView + itemExtent did the same jumps in 108 / 24 / 39 ms and scaled flat
+- [x] Add TreeScrollController: index-to-offset math over a plain ScrollController, using the fixed kRowHeight
+- [x] Swap ScrollablePositionedList for ListView.builder with itemExtent in EditorView
+- [x] Add a real Scrollbar with a draggable thumb, now possible because maxScrollExtent is exact
+- [x] Port scrollTo, ensureNodeCentered and the 9 keyboard-navigation sites to the new controller
+- [x] revealIndex only scrolls when the row is off-screen, so arrow keys stop yanking the list
+- [x] Port ValidationView go-to-issue navigation
+- [x] Remove the scrollable_positioned_list dependency entirely
+
+### v0.7.1 — Cut per-row scroll cost (COMPLETE)
+**Goal:** A row costs about as much as a bare Row.
+- [x] Attribute per-row cost by building synthetic row variants and measuring each
+- [x] ROOT CAUSE of the stutter: IconButton cost 63 ms per scroll step versus about 9 ms for a plain row. It builds InkWell ink machinery, focus nodes and semantics for every expandable row.
+- [x] Replace the chevron IconButton with a GestureDetector plus Icon
+- [x] Use two static icons instead of Transform.rotate, dropping a transform layer per row
+- [x] Replace the IconButton in ValidationBadge (go to issue)
+- [x] Replace the IconButton in RefIndicator (go to definition)
+- [x] Measured: real row overhead over a plain Row fell from 11.45 to 2.18 ms per scroll step
+- [x] RepaintBoundary, MouseRegion and GestureDetector all measured within noise of baseline, so they stay
+
+### v0.7.2 — Benchmarks that measure the right thing (COMPLETE)
+**Goal:** The harness covers scrolling, not just rebuilds.
+- [x] LESSON: the previous benchmark measured row rebuild cost only. That number improved 12x while scrolling stayed unusable, so the harness was blind to the actual defect.
+- [x] Add test/performance/scroll_benchmark_test.dart: scrollbar jumps, continuous scroll and scrollToIndex at 10k and 50k
+- [x] Assert maxScrollExtent is exact, which is what makes a working scrollbar possible
+- [x] Regression guard: a scrollbar jump must stay under 500 ms, which would have caught the 16.6 s behaviour
+- [x] Result at 50k rows: jump 77 ms, scrollToIndex 33 ms, continuous scroll 13 ms per step
+
+### v0.7.3 — Schema-optional is now enforced (COMPLETE)
+**Goal:** Viewing ARXML never depends on a schema.
+- [x] Add test/schema_optional_test.dart covering render, expand, collapse, select, edit and undo with xsdParser null
+- [x] Assert opening a file does not wait on schema attachment, so the deferral cannot be undone silently
+- [x] Documents the intended architecture: XSD adds validation badges and add-child suggestions, nothing more
+
 ## Future (Backlog)
 - [ ] Accessibility: minimum 44x44 tap target for rail destinations and toolbar icons
 - [ ] Accessibility: focus outline & keyboard navigation order for rail & overflow menu
@@ -380,3 +420,8 @@
 - [ ] MSI packaging for Windows distribution
 - [ ] Parse and build the XSD parser off the main isolate: a 9 MB AUTOSAR schema still costs ~seconds
 - [ ] Chunked / windowed loading for documents beyond ~200k nodes
+- [ ] Move XSD parsing to a background isolate: a 9 MB schema still parses on the UI thread and starves frames a second after a file opens. Needs a serializable SchemaLookup index because XmlDocument cannot cross isolates.
+- [ ] Tree outline pane: collapsible structural navigator (packages, modules, containers) with click to jump
+- [ ] Document minimap: full-height overview with viewport indicator and issue markers, replacing the placeholder ValidationGutter which buckets by path depth modulo height
+- [ ] Sticky ancestor breadcrumb so position is legible when scrolled deep
+- [ ] Jump-to-path quick open by AUTOSAR path or SHORT-NAME
