@@ -25,16 +25,38 @@ class ArxmlTreeState {
   final bool canUndo;
   final bool canRedo;
 
+  /// node id -> position in [visibleNodes].
+  ///
+  /// Selection used to be resolved by scanning `visibleNodes`. A single arrow
+  /// key ran three such scans (selectDown, setSelected, ensureSelectionVisible)
+  /// over 41k rows — about 123,000 comparisons per keypress, which showed up in
+  /// the e2e run as 38 ms frames with 98% of frames over budget. This makes all
+  /// three O(1).
+  final Map<int, int> visibleIndexById;
+
   ArxmlTreeState({
     required this.rootNodes,
     required this.visibleNodes,
     required this.flatMap,
+    Map<int, int>? visibleIndexById,
     this.contextMenuNodeId,
     this.selectedNodeId,
     this.pendingCenterNodeId,
     this.canUndo = false,
     this.canRedo = false,
-  });
+  }) : visibleIndexById = visibleIndexById ?? buildVisibleIndex(visibleNodes);
+
+  static Map<int, int> buildVisibleIndex(List<ElementNode> nodes) {
+    final map = <int, int>{};
+    for (var i = 0; i < nodes.length; i++) {
+      map[nodes[i].id] = i;
+    }
+    return map;
+  }
+
+  /// Position of [nodeId] among the visible rows, or null when not visible.
+  int? indexOfVisible(int? nodeId) =>
+      nodeId == null ? null : visibleIndexById[nodeId];
 
   ArxmlTreeState copyWith({
     int? contextMenuNodeId,
@@ -50,6 +72,7 @@ class ArxmlTreeState {
       rootNodes: rootNodes,
       visibleNodes: visibleNodes,
       flatMap: flatMap,
+      visibleIndexById: visibleIndexById,
       contextMenuNodeId:
           clearContextMenu ? null : contextMenuNodeId ?? this.contextMenuNodeId,
       selectedNodeId:
@@ -124,9 +147,10 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
     if (node == null) return;
     node.isCollapsed = !node.isCollapsed;
     final newVisible = UnmodifiableListView(_getVisibleNodes(state.rootNodes));
+    final newIndex = ArxmlTreeState.buildVisibleIndex(newVisible);
     // preserve selection if still visible else choose closest
     int? sel = state.selectedNodeId;
-    if (sel != null && !newVisible.any((n) => n.id == sel)) {
+    if (sel != null && !newIndex.containsKey(sel)) {
       // find first ancestor visible
       sel = newVisible.isNotEmpty ? newVisible.first.id : null;
     }
@@ -134,9 +158,12 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       rootNodes: state.rootNodes,
       flatMap: state.flatMap,
       visibleNodes: newVisible,
+      visibleIndexById: newIndex,
       contextMenuNodeId: state.contextMenuNodeId,
       selectedNodeId: sel,
       pendingCenterNodeId: state.pendingCenterNodeId,
+      canUndo: canUndo,
+      canRedo: canRedo,
     );
   }
 
@@ -473,7 +500,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
 
   // NEW: Selection helpers
   void setSelected(int? nodeId) {
-    if (nodeId != null && !state.visibleNodes.any((n) => n.id == nodeId)) {
+    if (nodeId != null && state.visibleIndexById[nodeId] == null) {
       return; // ignore invisible selection
     }
     state = state.copyWith(selectedNodeId: nodeId);
@@ -494,8 +521,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       selectFirst();
       return;
     }
-    final idx =
-        state.visibleNodes.indexWhere((n) => n.id == state.selectedNodeId);
+    final idx = state.indexOfVisible(state.selectedNodeId) ?? -1;
     if (idx > 0) setSelected(state.visibleNodes[idx - 1].id);
   }
 
@@ -504,8 +530,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       selectFirst();
       return;
     }
-    final idx =
-        state.visibleNodes.indexWhere((n) => n.id == state.selectedNodeId);
+    final idx = state.indexOfVisible(state.selectedNodeId) ?? -1;
     if (idx >= 0 && idx < state.visibleNodes.length - 1) {
       setSelected(state.visibleNodes[idx + 1].id);
     }
@@ -538,8 +563,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       selectFirst();
       return;
     }
-    final idx =
-        state.visibleNodes.indexWhere((n) => n.id == state.selectedNodeId);
+    final idx = state.indexOfVisible(state.selectedNodeId) ?? -1;
     final next = (idx - pageSize).clamp(0, state.visibleNodes.length - 1);
     setSelected(state.visibleNodes[next].id);
   }
@@ -549,8 +573,7 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
       selectFirst();
       return;
     }
-    final idx =
-        state.visibleNodes.indexWhere((n) => n.id == state.selectedNodeId);
+    final idx = state.indexOfVisible(state.selectedNodeId) ?? -1;
     final next = (idx + pageSize).clamp(0, state.visibleNodes.length - 1);
     setSelected(state.visibleNodes[next].id);
   }
@@ -567,10 +590,8 @@ class ArxmlTreeStateNotifier extends StateNotifier<ArxmlTreeState> {
   }
 
   void ensureSelectionVisible(void Function(int index) onNeedScroll) {
-    if (state.selectedNodeId == null) return;
-    final idx =
-        state.visibleNodes.indexWhere((n) => n.id == state.selectedNodeId);
-    if (idx == -1) return;
+    final idx = state.indexOfVisible(state.selectedNodeId);
+    if (idx == null) return;
     onNeedScroll(idx);
   }
 

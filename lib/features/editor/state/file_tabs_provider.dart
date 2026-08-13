@@ -760,7 +760,7 @@ class FileTabsNotifier extends StateNotifier<List<FileTabState>> {
       final notifier = _ref.read(tab.treeStateProvider.notifier);
       notifier.expandUntilNode(targetId!);
       final updated = _ref.read(tab.treeStateProvider);
-      final index = updated.visibleNodes.indexWhere((n) => n.id == targetId);
+      final index = updated.indexOfVisible(targetId) ?? -1;
       if (index != -1) {
         _ref.read(scrollToIndexProvider.notifier).state = index;
       }

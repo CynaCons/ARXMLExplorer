@@ -97,14 +97,27 @@ class _EditorViewState extends ConsumerState<EditorView> {
                 controller: widget.tabController,
                 children: tabs.map((tab) {
                   return Consumer(builder: (context, ref, child) {
-                    final treeState = ref.watch(tab.treeStateProvider);
+                    // Select only what the list needs. Watching the whole
+                    // ArxmlTreeState here rebuilt the entire list — and so
+                    // every visible row — on each selection change, which
+                    // defeated the per-row select() and cost ~27 ms/frame
+                    // (79-92% of frames over budget during keyboard navigation
+                    // and row clicks in the e2e run).
+                    //
+                    // visibleNodes is the same List instance across copyWith,
+                    // so selection and hover changes no longer invalidate it.
+                    final visibleNodes = ref.watch(
+                        tab.treeStateProvider.select((s) => s.visibleNodes));
+                    final pendingCenterNodeId = ref.watch(tab.treeStateProvider
+                        .select((s) => s.pendingCenterNodeId));
                     final notifier = ref.read(tab.treeStateProvider.notifier);
                     // Center pending node requests
-                    if (treeState.pendingCenterNodeId != null) {
+                    if (pendingCenterNodeId != null) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         final updated = ref.read(tab.treeStateProvider);
-                        final idx = updated.visibleNodes.indexWhere(
-                            (n) => n.id == updated.pendingCenterNodeId);
+                        final idx = updated
+                                .indexOfVisible(updated.pendingCenterNodeId) ??
+                            -1;
                         if (idx != -1) {
                           final smooth = ref.read(smoothScrollingProvider);
                           widget.treeScrollController.scrollToIndex(
@@ -308,7 +321,7 @@ class _EditorViewState extends ConsumerState<EditorView> {
                                 showSearch(
                                   context: context,
                                   delegate: CustomSearchDelegate(
-                                    treeState,
+                                    ref.read(tab.treeStateProvider),
                                   ),
                                 );
                                 break;
@@ -333,10 +346,9 @@ class _EditorViewState extends ConsumerState<EditorView> {
                               widget.treeScrollController.scrollController,
                           itemExtent: kRowHeight,
                           // Use visibleNodes so expanded children are shown, not just roots
-                          itemCount: treeState.visibleNodes.length,
+                          itemCount: visibleNodes.length,
                           itemBuilder: (context, index) {
-                            final ElementNode node =
-                                treeState.visibleNodes[index];
+                            final ElementNode node = visibleNodes[index];
                             return ElementNodeWidget(
                               // Keyed by node id so element and state are reused
                               // across rebuilds instead of being torn down when
