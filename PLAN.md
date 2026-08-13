@@ -387,6 +387,35 @@
 - [x] Assert opening a file does not wait on schema attachment, so the deferral cannot be undone silently
 - [x] Documents the intended architecture: XSD adds validation badges and add-child suggestions, nothing more
 
+## v0.8 — End-to-End Performance Measurement
+> Headed integration tests on a real window, measuring engine frame timings rather than harness pump cost.
+
+### v0.8.0 — Headed e2e performance harness (COMPLETE)
+**Goal:** Frame timings from a real window, not a test harness.
+- [x] Add integration_test dependency and integration_test/support/frame_stats.dart collecting engine FrameTiming via addTimingsCallback
+- [x] Add integration_test/editor_performance_test.dart driving the real app with real gestures on a 50k-node document
+- [x] Scenarios: open, drag scroll, fling, mouse wheel, scrollbar drag, keyboard nav, row clicks, expand/collapse all, seek across document
+- [x] Report p50, p90, p99, max and jank percentage against the 16.7 ms budget per scenario
+- [x] Split gate: scrolling strict (under 15% janky, no frame over 250 ms), known-open scenarios loose (catch outright hangs only)
+- [x] CONFIRMED the scroll work on real hardware: fling 3.9 ms p50 0% janky, scrollbar drag 4.2 ms p50 0% janky, drag 4.4 ms p50 2% janky
+
+### v0.8.1 — Costs the widget benchmarks could not see (COMPLETE)
+**Goal:** Two real defects found by the e2e harness.
+- [x] FIX: EditorView's list-level Consumer watched the whole ArxmlTreeState, so every selection change rebuilt the entire list and all visible rows, defeating the per-row select(). Now selects visibleNodes and pendingCenterNodeId only.
+- [x] FIX: selection resolution scanned visibleNodes linearly. One arrow key ran three scans (selectDown, setSelected, ensureSelectionVisible) over 41k rows, about 123,000 comparisons per keypress.
+- [x] Add ArxmlTreeState.visibleIndexById (node id to visible index) and indexOfVisible(); all lookups are now O(1)
+- [x] HONEST RESULT: both are correct improvements but neither moved the keyboard-nav number, which sits at about 30 ms per frame across three runs. Dominant cost still unidentified.
+
+### v0.8.2 — Selection and structure performance (PLANNED)
+**Goal:** Keyboard navigation and row clicks inside the frame budget.
+- [ ] Profile with the DevTools timeline rather than guessing again: two hypotheses have already been tried and missed
+- [ ] keyboard nav: 30.4 ms p50, 94% of frames over budget on a 50k-node document
+- [ ] row selection clicks: 24.8 ms p50, 79% over budget
+- [ ] expand / collapse all: 16.9 ms p50 but 74.6 ms p90 — _getVisibleNodes rebuilds the full 41k list per toggle
+- [ ] seek across document: 16.7 ms p50, 72.1 ms p90
+- [ ] open + expandAll: 496 ms worst frame, largely the initial parse and first layout
+- [ ] Suspects to check, in order: Riverpod notification fan-out across roughly 140 per-row subscriptions, the per-row ref.listen on keyboardNavTickProvider, and ElementNodeWidget being a ConsumerStatefulWidget rebuilt as rows recycle
+
 ## Future (Backlog)
 - [ ] Accessibility: minimum 44x44 tap target for rail destinations and toolbar icons
 - [ ] Accessibility: focus outline & keyboard navigation order for rail & overflow menu
